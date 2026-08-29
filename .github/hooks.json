@@ -1,0 +1,14 @@
+{
+  "hooks": [
+    {
+      "event": "file_changed",
+      "name": "verify-after-edit",
+      "command": "npm run check"
+    },
+    {
+      "event": "task_completed",
+      "name": "verify-before-finish",
+      "command": "npm run check && npm test"
+    }
+  ]
+}
