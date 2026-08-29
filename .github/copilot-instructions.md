@@ -52,6 +52,17 @@ This architecture is documented in docs/PRD.md and docs/handoffs/triage-agent.md
 - Keep the codebase investigation seam mocked or easy to swap in v1; do not add GitHub/Slack/PagerDuty/D1 wiring unless the task explicitly targets a later milestone.
 - Match the v1 tracer-bullet design: plain Cloudflare Worker, no Durable Objects for this stage, and fast asynchronous triage after a 200 response.
 - Prefer small, explicit modules and interfaces over broad abstractions.
+- For every new task, create a dedicated branch and, when parallel development is expected, a separate worktree before editing files. Do not let multiple agents or processes work on the same file in the same repo state.
+- If a file already has uncommitted or branch-local changes in another worktree, stop and coordinate rather than editing the same path concurrently.
+
+## Branch + worktree workflow
+```bash
+git switch -c feature/<task-name>
+# For parallel work or multi-agent safety:
+git worktree add ../bug-triage-<task-name> -b feature/<task-name>
+```
+
+This is the default workflow for any follow-up task in this repository. It prevents two processes from modifying the same file at once and keeps each change set isolated.
 
 ## Severity model
 The project’s severity model is intentionally rule-based:

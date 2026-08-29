@@ -46,6 +46,24 @@ curl -X POST http://localhost:8787/webhook/sentry \
 - Favor pure functions and explicit seams over hidden side effects
 - Do not add GitHub, Slack, PagerDuty, or D1 persistence unless the work clearly targets a later milestone
 
+## Branch and worktree workflow
+
+For any new task, do not edit files in the main working tree when another session or process may be working on the same repository. Use a dedicated branch and, when needed, a separate worktree before making code changes.
+
+Required workflow:
+
+```bash
+git switch -c feature/<task-name>
+# if parallel work is expected or another process may be active:
+git worktree add ../bug-triage-<task-name> -b feature/<task-name>
+```
+
+Rules:
+- Never make edits directly in a shared branch when multiple agents are active.
+- If a file is already modified in another worktree, stop and coordinate before touching it.
+- Keep each task isolated to its own branch/worktree to prevent collisions on the same file.
+- When you finish a task, commit the branch and leave the repo in a clean, reviewable state.
+
 ## Coding conventions for agents
 
 - Prefer small, explicit modules and interfaces over large abstractions
