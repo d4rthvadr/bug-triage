@@ -64,6 +64,36 @@ Rules:
 - Keep each task isolated to its own branch/worktree to prevent collisions on the same file.
 - When you finish a task, commit the branch and leave the repo in a clean, reviewable state.
 
+## Verification lifecycle
+
+Run validation immediately after code changes and again before finishing a task. This repo does not define a dedicated lint script, so the verification gate is:
+
+```bash
+npm run check
+npm test
+```
+
+For any edit that changes behavior, treat the small verification loop as required:
+
+```bash
+npm run check
+npm test -- --runInBand
+```
+
+Use the same gate before committing or handing off work. This is the repository’s practical "post-edit" and "pre-finish" check.
+
+A repo-local git hook is also recommended so verification runs automatically on commit:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook script at `.githooks/pre-commit` should run:
+
+```bash
+npm run check && npm test
+```
+
 ## Coding conventions for agents
 
 - Prefer small, explicit modules and interfaces over large abstractions
@@ -71,7 +101,8 @@ Rules:
 - When implementing v1 features, match the design in the tracer-bullet spec and the handoff doc rather than inventing a new system shape
 - Preserve the contract between the webhook layer, the agent loop, and the tool implementations
 - Add tests around business rule logic and the agent loop, but do not rely on live Workers AI or network calls
+- Do not finalize a task until the verification gate passes.
 
 ## Current repo status
 
-This repository is documentation-first and does not yet contain the implementation files described by the design docs. When building code, follow the v1 tracer-bullet requirements before introducing later milestones such as GitHub integration, routing, or auto-fix flows.
+This repository is now a working v1 tracer-bullet implementation of the bug-triage worker. Continue to follow the v1 requirements before introducing later milestones such as GitHub integration, routing, or auto-fix flows.

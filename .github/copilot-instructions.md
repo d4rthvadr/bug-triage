@@ -54,6 +54,8 @@ This architecture is documented in docs/PRD.md and docs/handoffs/triage-agent.md
 - Prefer small, explicit modules and interfaces over broad abstractions.
 - For every new task, create a dedicated branch and, when parallel development is expected, a separate worktree before editing files. Do not let multiple agents or processes work on the same file in the same repo state.
 - If a file already has uncommitted or branch-local changes in another worktree, stop and coordinate rather than editing the same path concurrently.
+- After any code edit, run the repo verification gate before finishing: `npm run check` and `npm test`.
+- Do not mark work complete until the verification gate passes.
 
 ## Branch + worktree workflow
 ```bash
@@ -63,6 +65,26 @@ git worktree add ../bug-triage-<task-name> -b feature/<task-name>
 ```
 
 This is the default workflow for any follow-up task in this repository. It prevents two processes from modifying the same file at once and keeps each change set isolated.
+
+## Verification lifecycle
+Use a post-edit + pre-finish verification gate that matches the repo’s current tooling:
+
+```bash
+npm run check
+npm test
+```
+
+This repo does not have a dedicated lint script at the moment. Type-checking and the Vitest suite are the required validation commands. For a local commit hook, configure:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+and keep `.githooks/pre-commit` running:
+
+```bash
+npm run check && npm test
+```
 
 ## Severity model
 The project’s severity model is intentionally rule-based:
