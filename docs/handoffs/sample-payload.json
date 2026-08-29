@@ -1,0 +1,39 @@
+{
+  "action": "triggered",
+  "data": {
+    "event": {
+      "id": "abc123def456",
+      "title": "TypeError: Cannot read properties of undefined (reading 'userId')",
+      "culprit": "src/services/checkout/orderService.ts in processOrder",
+      "level": "error",
+      "project": "checkout-api",
+      "exception": {
+        "values": [
+          {
+            "type": "TypeError",
+            "value": "Cannot read properties of undefined (reading 'userId')",
+            "stacktrace": {
+              "frames": [
+                {
+                  "filename": "src/services/checkout/orderService.ts",
+                  "function": "processOrder",
+                  "lineno": 84
+                },
+                {
+                  "filename": "src/controllers/checkout.ts",
+                  "function": "handleCheckout",
+                  "lineno": 42
+                },
+                {
+                  "filename": "src/middleware/auth.ts",
+                  "function": "requireAuth",
+                  "lineno": 17
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}
