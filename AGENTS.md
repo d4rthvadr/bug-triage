@@ -64,35 +64,29 @@ Rules:
 - Keep each task isolated to its own branch/worktree to prevent collisions on the same file.
 - When you finish a task, commit the branch and leave the repo in a clean, reviewable state.
 
-## Verification lifecycle
+## Copilot agent lifecycle hooks
 
-Run validation immediately after code changes and again before finishing a task. This repo does not define a dedicated lint script, so the verification gate is:
+These are the required lifecycle rules for any Copilot or autonomous agent working in this repository:
+
+- After any file edit, run the verification gate before continuing: `npm run check`.
+- After a behavioral change or before finishing an implementation task, run the repo validation gate: `npm run check && npm test`.
+- Before handing off work or finalizing a task, confirm the gate passes and call out the result in the final summary.
+
+This repo does not define a dedicated lint script, so the current verification gate is TypeScript + Vitest:
 
 ```bash
 npm run check
 npm test
 ```
 
-For any edit that changes behavior, treat the small verification loop as required:
+For a tight check after a single change, the minimal loop is:
 
 ```bash
 npm run check
-npm test -- --runInBand
+npm test
 ```
 
-Use the same gate before committing or handing off work. This is the repository’s practical "post-edit" and "pre-finish" check.
-
-A repo-local git hook is also recommended so verification runs automatically on commit:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-The hook script at `.githooks/pre-commit` should run:
-
-```bash
-npm run check && npm test
-```
+This is the actual Copilot session lifecycle requirement. A git hook is optional convenience only; it is not a substitute for the agent lifecycle workflow.
 
 ## Coding conventions for agents
 

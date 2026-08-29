@@ -66,25 +66,21 @@ git worktree add ../bug-triage-<task-name> -b feature/<task-name>
 
 This is the default workflow for any follow-up task in this repository. It prevents two processes from modifying the same file at once and keeps each change set isolated.
 
-## Verification lifecycle
-Use a post-edit + pre-finish verification gate that matches the repo’s current tooling:
+## Copilot agent lifecycle hooks
+Treat these as required lifecycle steps for any automated or Copilot session working in this repo:
+
+- Immediately after any code edit, run `npm run check`.
+- After a behavior change or before concluding work, run the repo validation gate: `npm run check && npm test`.
+- Before finalizing a response or handing off the task, confirm the validation gate passes and summarize that result.
+
+This repo does not define a dedicated lint script. The active validation commands are the TypeScript check and the Vitest suite:
 
 ```bash
 npm run check
 npm test
 ```
 
-This repo does not have a dedicated lint script at the moment. Type-checking and the Vitest suite are the required validation commands. For a local commit hook, configure:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-and keep `.githooks/pre-commit` running:
-
-```bash
-npm run check && npm test
-```
+A repository git hook under `.githooks/pre-commit` may be used as convenience automation, but the authoritative workflow is the Copilot lifecycle rule above.
 
 ## Severity model
 The project’s severity model is intentionally rule-based:
