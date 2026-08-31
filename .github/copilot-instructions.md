@@ -1,11 +1,13 @@
 # Copilot instructions for bug-triage
 
 ## Project purpose
+
 This repository is a docs-first Cloudflare Worker for triaging Sentry alerts. The current milestone is the v1 tracer bullet: receive a webhook, verify the HMAC-SHA256 signature, run a deterministic business-severity tool, run a mocked codebase investigation tool, and emit a triage report.
 
-Use README.md, AGENTS.md, docs/PRD.md, and docs/handoffs/triage-agent.md as the primary source of truth before making changes. The repo intentionally keeps the architecture simple and explicit; do not add GitHub, Slack, PagerDuty, or D1 persistence unless the work is clearly targeting a later milestone.
+Use README.md, AGENTS.md, docs/PRD.md, docs/adr, and the active milestone docs under docs/handoffs and docs/specs as the primary source of truth before making changes. Prefer the current handoff/spec for the phase you are implementing, and treat the ADRs as the durable decision record for scope, guardrails, and roadmap direction. The repo intentionally keeps the architecture simple and explicit; do not add GitHub, Slack, PagerDuty, or D1 persistence unless the work is clearly targeting a later milestone.
 
 ## Working commands
+
 The repo currently defines the project workflow through Wrangler and the sample payload rather than `npm` scripts.
 
 ```bash
@@ -29,10 +31,12 @@ wrangler deploy
 ```
 
 Notes:
+
 - In local dev, signature verification is skipped when `SENTRY_WEBHOOK_SECRET` is not set.
 - There is no checked-in test or lint command in this repo yet. When a test runner is introduced, prefer the narrowest command that targets the changed behavior instead of the full suite.
 
 ## High-level architecture
+
 The repo is deliberately small and organized around explicit seams:
 
 - Sentry sends a webhook to `POST /webhook/sentry`.
@@ -46,6 +50,7 @@ The repo is deliberately small and organized around explicit seams:
 This architecture is documented in docs/PRD.md and docs/handoffs/triage-agent.md; follow those docs instead of inventing a new system shape.
 
 ## Repo-specific conventions
+
 - Keep the severity model auditable and deterministic. `rankSeverity` should be a pure function based on explicit rules, not a model decision.
 - Preserve the contract between the webhook layer, the agent loop, and the tool implementations.
 - Treat `resolved` and other non-trigger events as non-actionable unless a later milestone explicitly adds support for them.
@@ -58,6 +63,7 @@ This architecture is documented in docs/PRD.md and docs/handoffs/triage-agent.md
 - Do not mark work complete until the verification gate passes.
 
 ## Branch + worktree workflow
+
 ```bash
 git switch -c feature/<task-name>
 # For parallel work or multi-agent safety:
@@ -67,6 +73,7 @@ git worktree add ../bug-triage-<task-name> -b feature/<task-name>
 This is the default workflow for any follow-up task in this repository. It prevents two processes from modifying the same file at once and keeps each change set isolated.
 
 ## Copilot agent lifecycle hooks
+
 Treat these as required lifecycle steps for any automated or Copilot session working in this repo:
 
 - Immediately after any code edit, run `npm run check`.
@@ -83,22 +90,25 @@ npm test
 A repository git hook under `.githooks/pre-commit` may be used as convenience automation, but the authoritative workflow is the Copilot lifecycle rule above.
 
 ## Severity model
+
 The project’s severity model is intentionally rule-based:
 
-| Sentry level | Project context | Business severity |
-| --- | --- | --- |
-| `fatal` | any | P0 |
-| `error` | checkout / payment / auth / api | P1 |
-| `error` | other | P2 |
-| `warning` or below | any | P3 |
+| Sentry level       | Project context                 | Business severity |
+| ------------------ | ------------------------------- | ----------------- |
+| `fatal`            | any                             | P0                |
+| `error`            | checkout / payment / auth / api | P1                |
+| `error`            | other                           | P2                |
+| `warning` or below | any                             | P3                |
 
 This is the canonical escalation logic for the current tracer-bullet implementation.
 
 ## What to read first
+
 - README.md
 - AGENTS.md
 - docs/PRD.md
-- docs/handoffs/triage-agent.md
-- docs/specs/v1-tracer-bullet.md
+- docs/adr/README.md
+- docs/handoffs/ (current phase handoff)
+- docs/specs/ (current phase spec)
 
-These files describe the repository’s actual product constraints and the implementation contract that future code should match.
+These files describe the repository’s actual product constraints and the implementation contract that future code should match. When multiple milestone docs exist, read the active handoff/spec for the current phase instead of assuming a stale v1 file. Before starting work, check the ADRs for the current decision record and milestone guardrails that constrain the change.

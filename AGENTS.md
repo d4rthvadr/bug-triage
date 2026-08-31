@@ -8,8 +8,11 @@ This repo is a Cloudflare Worker for triaging Sentry alerts. The v1 milestone is
 
 - [README.md](README.md)
 - [docs/PRD.md](docs/PRD.md)
-- [docs/handoffs/triage-agent.md](docs/handoffs/triage-agent.md)
-- [docs/specs/v1-tracer-bullet.md](docs/specs/v1-tracer-bullet.md)
+- [docs/adr/README.md](docs/adr/README.md)
+- the active handoff under [docs/handoffs](docs/handoffs)
+- the active spec under [docs/specs](docs/specs)
+
+Before making initial product or architecture decisions, read the ADRs and the current milestone handoff/spec to understand the approved boundaries and guardrails for the roadmap. When multiple phase docs exist, prefer the latest active handoff and spec for the phase you are implementing instead of assuming a stale v1 artifact.
 
 ## Product constraints
 
@@ -59,6 +62,7 @@ git worktree add ../bug-triage-<task-name> -b feature/<task-name>
 ```
 
 Rules:
+
 - Never make edits directly in a shared branch when multiple agents are active.
 - If a file is already modified in another worktree, stop and coordinate before touching it.
 - Keep each task isolated to its own branch/worktree to prevent collisions on the same file.
@@ -92,6 +96,7 @@ This is the actual Copilot session lifecycle requirement. A git hook is optional
 
 - Prefer small, explicit modules and interfaces over large abstractions
 - Keep the severity mapping in source code and easy to audit via review
+- Before deciding on scope, architecture, or roadmap changes, review the ADRs and confirm the planned work fits the recorded decisions
 - When implementing v1 features, match the design in the tracer-bullet spec and the handoff doc rather than inventing a new system shape
 - Preserve the contract between the webhook layer, the agent loop, and the tool implementations
 - Add tests around business rule logic and the agent loop, but do not rely on live Workers AI or network calls
