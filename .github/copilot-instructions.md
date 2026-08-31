@@ -55,6 +55,7 @@ This architecture is documented in docs/PRD.md and docs/handoffs/triage-agent.md
 - Preserve the contract between the webhook layer, the agent loop, and the tool implementations.
 - Treat `resolved` and other non-trigger events as non-actionable unless a later milestone explicitly adds support for them.
 - Keep the codebase investigation seam mocked or easy to swap in v1; do not add GitHub/Slack/PagerDuty/D1 wiring unless the task explicitly targets a later milestone.
+- When adding or changing setup requirements for third-party services, dependencies, or infrastructure, create or update docs under `docs/setups/` so future sessions can configure the repo without guesswork.
 - Match the v1 tracer-bullet design: plain Cloudflare Worker, no Durable Objects for this stage, and fast asynchronous triage after a 200 response.
 - Prefer small, explicit modules and interfaces over broad abstractions.
 - For every new task, create a dedicated branch and, when parallel development is expected, a separate worktree before editing files. Do not let multiple agents or processes work on the same file in the same repo state.

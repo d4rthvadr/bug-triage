@@ -76,6 +76,7 @@ When new files or changes are introduced:
 - prefer the most current active docs over historical ones
 - do not leave stale references to retired phases if a newer spec or handoff supersedes them
 - if a new ADR changes product scope, update the relevant docs and milestone notes
+- if a change introduces or alters setup steps for a third-party service, dependency, or infrastructure binding, add or update a guide under `docs/setups/` and link it from the main README or doc index
 
 ## Workflow
 
