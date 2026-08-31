@@ -1,9 +1,17 @@
-import { runTriageAgent, type AiLike } from './agent';
+import { parseRepositoryMapping } from './config';
+import { createD1TriageStore } from './store';
+import { processTriggeredEvent, type AiLike } from './agent';
 import type { AlertEventPayload } from './types';
 
 export interface Env {
   AI: AiLike;
   SENTRY_WEBHOOK_SECRET?: string;
+  GITHUB_TOKEN?: string;
+  GITHUB_API_BASE_URL?: string;
+  PROJECT_REPOSITORY_MAP?: string;
+  SLACK_WEBHOOK_URL?: string;
+  PAGERDUTY_WEBHOOK_URL?: string;
+  TRIAGE_RESULTS?: D1Database;
 }
 
 async function verifySignature(secret: string | undefined, rawBody: string, signature: string | null): Promise<boolean> {
@@ -25,6 +33,10 @@ async function verifySignature(secret: string | undefined, rawBody: string, sign
     .join('');
 
   return expected === signature.toLowerCase();
+}
+
+function buildRepositoryMapping(env: Env): Record<string, { owner: string; repo: string; branch?: string }> {
+  return parseRepositoryMapping(env.PROJECT_REPOSITORY_MAP);
 }
 
 export default {
@@ -54,7 +66,23 @@ export default {
       return new Response('Ignored', { status: 200 });
     }
 
-    ctx.waitUntil(runTriageAgent(payload, env.AI));
+    const dependencies = {
+      investigation: {
+        github: {
+          baseUrl: env.GITHUB_API_BASE_URL,
+          token: env.GITHUB_TOKEN,
+        },
+        repositoryMapping: buildRepositoryMapping(env),
+      },
+      notification: {
+        slackWebhookUrl: env.SLACK_WEBHOOK_URL,
+        pagerDutyWebhookUrl: env.PAGERDUTY_WEBHOOK_URL,
+      },
+      store: env.TRIAGE_RESULTS ? createD1TriageStore(env.TRIAGE_RESULTS) : undefined,
+      rawPayload: rawBody,
+    };
+
+    ctx.waitUntil(processTriggeredEvent(payload, env.AI, dependencies));
     return new Response('OK', { status: 200 });
   },
 };

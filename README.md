@@ -15,6 +15,8 @@ npm install
 wrangler secret put SENTRY_WEBHOOK_SECRET
 ```
 
+For v2 investigation/routing, also provide a `PROJECT_REPOSITORY_MAP` JSON env var plus the relevant GitHub, Slack, PagerDuty, and D1 bindings.
+
 ## Run
 
 ```bash
