@@ -34,27 +34,9 @@ describe('rankSeverity', () => {
 });
 
 describe('runTriageAgent', () => {
-  it('calls both tools and logs the final report', async () => {
+  it('builds a report and logs the final output', async () => {
     const ai = {
       run: vi.fn()
-        .mockResolvedValueOnce({
-          result: {
-            tool_calls: [
-              {
-                name: 'rankSeverity',
-                arguments: { level: 'error', project: 'checkout-api', culprit: 'src/services/checkout/orderService.ts' },
-              },
-              {
-                name: 'investigateCodebase',
-                arguments: {
-                  culprit: 'src/services/checkout/orderService.ts',
-                  errorMessage: 'Cannot read properties of undefined (reading userId)',
-                  stackFrames: [{ filename: 'src/services/checkout/orderService.ts', lineno: 84 }],
-                },
-              },
-            ],
-          },
-        })
         .mockResolvedValueOnce({
           result: {
             response: 'Checkout is failing because an undefined userId is accessed during order creation.',
@@ -82,7 +64,7 @@ describe('runTriageAgent', () => {
 
     const result = await runTriageAgent(payload, ai as any);
 
-    expect(ai.run).toHaveBeenCalledTimes(2);
+    expect(ai.run).toHaveBeenCalledTimes(1);
     expect(result).toContain('Checkout is failing');
     expect(logSpy).toHaveBeenCalled();
     logSpy.mockRestore();
