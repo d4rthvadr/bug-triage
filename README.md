@@ -17,6 +17,17 @@ wrangler secret put SENTRY_WEBHOOK_SECRET
 
 For v2 investigation/routing, also provide a `PROJECT_REPOSITORY_MAP` JSON env var plus the relevant GitHub, Slack, PagerDuty, and D1 bindings.
 
+## D1 migration
+
+Create the database once, then apply the schema:
+
+```bash
+wrangler d1 create triage-results
+wrangler d1 execute triage-results --file migrations/0001_create_triage_results.sql --remote
+```
+
+Bind that database as `TRIAGE_RESULTS` in `wrangler.toml`.
+
 ## Run
 
 ```bash
@@ -32,6 +43,8 @@ curl -X POST http://localhost:8787/webhook/sentry \
 ```
 
 > Note: signature verification is skipped when `SENTRY_WEBHOOK_SECRET` is not set in dev.
+
+The only trigger the Worker processes is a Sentry webhook with `"action": "triggered"`.
 
 ## Deploy
 
