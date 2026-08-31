@@ -1,71 +1,77 @@
+import { Octokit } from '@octokit/rest';
+
 import type { GitHubClientConfig, RepositoryRef } from './types';
 
 interface GitHubSearchCodeItem {
-  name?: string;
   path?: string;
 }
 
 interface GitHubCommitItem {
-  sha: string;
+  author?: {
+    login?: string;
+  };
   commit: {
     author?: {
       name?: string;
     };
   };
-  author?: {
-    login?: string;
-  };
 }
 
-function encodePath(path: string): string {
-  return path
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-}
-
-function joinBaseUrl(baseUrl: string | undefined): string {
+function normalizeBaseUrl(baseUrl: string | undefined): string {
   return (baseUrl ?? 'https://api.github.com').replace(/\/$/, '');
 }
 
-async function readText(response: Response): Promise<string> {
-  return response.text();
+function createOctokit(config: GitHubClientConfig): Octokit {
+  return new Octokit({
+    auth: config.token,
+    baseUrl: normalizeBaseUrl(config.baseUrl),
+    ...(config.fetchImpl
+      ? {
+          request: {
+            fetch: config.fetchImpl,
+          },
+        }
+      : {}),
+  });
 }
 
-async function requestJson<T>(fetchImpl: typeof fetch, url: string, token?: string): Promise<T> {
-  const response = await fetchImpl(url, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`GitHub request failed for ${url}: ${response.status} ${response.statusText}`);
+function parseContentString(data: unknown): string | undefined {
+  if (typeof data === 'string') {
+    return data;
   }
 
-  return response.json() as Promise<T>;
+  return undefined;
 }
 
-async function requestOptionalText(fetchImpl: typeof fetch, url: string, token?: string): Promise<string | undefined> {
-  const response = await fetchImpl(url, {
-    headers: {
-      Accept: 'application/vnd.github.raw',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-  });
+async function readRawFile(
+  octokit: Octokit,
+  repository: RepositoryRef,
+  path: string,
+): Promise<string | undefined> {
+  try {
+    const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+      owner: repository.owner,
+      repo: repository.repo,
+      path,
+      mediaType: {
+        format: 'raw',
+      },
+    });
 
-  if (response.status === 404) {
-    return undefined;
+    return parseContentString(response.data);
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'status' in error &&
+      typeof (error as { status?: unknown }).status === 'number' &&
+      (error as { status?: number }).status === 404
+    ) {
+      return undefined;
+    }
+
+    throw error;
   }
-
-  if (!response.ok) {
-    throw new Error(`GitHub request failed for ${url}: ${response.status} ${response.statusText}`);
-  }
-
-  return readText(response);
 }
 
 export interface GitHubClient {
@@ -76,36 +82,45 @@ export interface GitHubClient {
 }
 
 export function createGitHubClient(config: GitHubClientConfig = {}): GitHubClient {
-  const fetchImpl = config.fetchImpl ?? fetch;
-  const baseUrl = joinBaseUrl(config.baseUrl);
+  const octokit = createOctokit(config);
 
   return {
     async searchCode(repository: RepositoryRef, query: string): Promise<GitHubSearchCodeItem[]> {
-      const url = new URL(`${baseUrl}/search/code`);
-      url.searchParams.set('q', `repo:${repository.owner}/${repository.repo} ${query}`);
-      const response = await requestJson<{ items?: GitHubSearchCodeItem[] }>(fetchImpl, url.toString(), config.token);
-      return response.items ?? [];
+      const response = await octokit.rest.search.code({
+        q: `repo:${repository.owner}/${repository.repo} ${query}`,
+        per_page: 10,
+      });
+
+      return response.data.items.map((item) => ({ path: item.path ?? undefined }));
     },
 
     async listCommits(repository: RepositoryRef, path: string): Promise<GitHubCommitItem[]> {
-      const url = new URL(`${baseUrl}/repos/${repository.owner}/${repository.repo}/commits`);
-      url.searchParams.set('path', path);
-      return requestJson<GitHubCommitItem[]>(fetchImpl, url.toString(), config.token);
+      const response = await octokit.rest.repos.listCommits({
+        owner: repository.owner,
+        repo: repository.repo,
+        path,
+        per_page: 10,
+      });
+
+      return response.data.map((commit) => ({
+        author: {
+          login: commit.author?.login,
+        },
+        commit: {
+          author: {
+            name: commit.commit.author?.name,
+          },
+        },
+      }));
     },
 
     async getFileText(repository: RepositoryRef, path: string): Promise<string | undefined> {
-      const url = `${baseUrl}/repos/${repository.owner}/${repository.repo}/contents/${encodePath(path)}`;
-      return requestOptionalText(fetchImpl, url, config.token);
+      return readRawFile(octokit, repository, path);
     },
 
     async getCodeowners(repository: RepositoryRef): Promise<string | undefined> {
-      const candidates = ['.github/CODEOWNERS', 'CODEOWNERS'];
-      for (const candidate of candidates) {
-        const text = await requestOptionalText(
-          fetchImpl,
-          `${baseUrl}/repos/${repository.owner}/${repository.repo}/contents/${encodePath(candidate)}`,
-          config.token,
-        );
+      for (const candidate of ['.github/CODEOWNERS', 'CODEOWNERS']) {
+        const text = await readRawFile(octokit, repository, candidate);
         if (text) {
           return text;
         }
@@ -129,7 +144,7 @@ export function parseCodeowners(text: string): Array<{ pattern: string; owners: 
 
 function wildcardToRegExp(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  const regex = escaped.replace(/\*/g, '.*').replace(/\?/g, '.');
+  const regex = escaped.replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*').replace(/\?/g, '.');
   return new RegExp(`^${regex}$`);
 }
 

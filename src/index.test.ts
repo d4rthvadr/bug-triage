@@ -36,11 +36,11 @@ function createMockFetch() {
       );
     }
 
-    if (url.includes('/contents/.github/CODEOWNERS')) {
+    if (url.includes('/contents/.github%2FCODEOWNERS')) {
       return new Response('src/services/checkout/* @checkout-team', { status: 200 });
     }
 
-    if (url.includes('/contents/src/services/checkout/orderService.ts')) {
+    if (url.includes('/contents/src%2Fservices%2Fcheckout%2ForderService.ts')) {
       return new Response(
         'export function processOrder() {\n  const userId = currentUser.userId;\n  return userId;\n}\n',
         { status: 200 },

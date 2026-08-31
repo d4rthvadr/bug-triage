@@ -2,6 +2,8 @@
 
 Use this when you want `investigateCodebase` to query a real repository instead of the v1 mock.
 
+The Worker uses `@octokit/rest` under the hood, so this setup only needs the token and repo mapping — the SDK handles the GitHub API calls.
+
 ## Configure environment
 
 Set these values with Wrangler:
