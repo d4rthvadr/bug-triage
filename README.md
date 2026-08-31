@@ -19,12 +19,14 @@ For v2 investigation/routing, also provide a `PROJECT_REPOSITORY_MAP` JSON env v
 
 ## D1 migration
 
-Create the database once, then apply the schema:
+Create the database once, then let Wrangler apply pending files from `migrations/` in order:
 
 ```bash
 wrangler d1 create triage-results
-wrangler d1 execute triage-results --file migrations/0001_create_triage_results.sql --remote
+wrangler d1 migrations apply triage-results --remote
 ```
+
+For future changes, add a new `migrations/*.sql` file and re-run the same `migrations apply` command.
 
 Bind that database as `TRIAGE_RESULTS` in `wrangler.toml`.
 
