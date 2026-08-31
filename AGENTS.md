@@ -66,12 +66,14 @@ Rules:
 - Never make edits directly in a shared branch when multiple agents are active.
 - If a file is already modified in another worktree, stop and coordinate before touching it.
 - Keep each task isolated to its own branch/worktree to prevent collisions on the same file.
+- Break work into small, coherent checkpoints and commit each one as a complete unit of progress rather than waiting for a single large final commit.
 - When you finish a task, commit the branch and leave the repo in a clean, reviewable state.
 
 ## Copilot agent lifecycle hooks
 
 These are the required lifecycle rules for any Copilot or autonomous agent working in this repository:
 
+- Break the task into reviewable checkpoints and commit each verified unit of work separately instead of batching unrelated changes into a single end-state commit.
 - After any file edit, run the verification gate before continuing: `npm run check`.
 - After a behavioral change or before finishing an implementation task, run the repo validation gate: `npm run check && npm test`.
 - Before handing off work or finalizing a task, confirm the gate passes and call out the result in the final summary.

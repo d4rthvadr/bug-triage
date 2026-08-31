@@ -59,6 +59,7 @@ This architecture is documented in docs/PRD.md and docs/handoffs/triage-agent.md
 - Prefer small, explicit modules and interfaces over broad abstractions.
 - For every new task, create a dedicated branch and, when parallel development is expected, a separate worktree before editing files. Do not let multiple agents or processes work on the same file in the same repo state.
 - If a file already has uncommitted or branch-local changes in another worktree, stop and coordinate rather than editing the same path concurrently.
+- Break work into logical units of progress and commit each completed unit separately instead of waiting for one large final commit. Prefer small, reviewable commits that map to one decision, one feature slice, or one verified change set.
 - After any code edit, run the repo verification gate before finishing: `npm run check` and `npm test`.
 - Do not mark work complete until the verification gate passes.
 
@@ -76,6 +77,7 @@ This is the default workflow for any follow-up task in this repository. It preve
 
 Treat these as required lifecycle steps for any automated or Copilot session working in this repo:
 
+- Break the task into meaningful checkpoints and commit each checkpoint as a complete unit of work when it is verified, rather than batching unrelated changes into one large commit.
 - Immediately after any code edit, run `npm run check`.
 - After a behavior change or before concluding work, run the repo validation gate: `npm run check && npm test`.
 - Before finalizing a response or handing off the task, confirm the validation gate passes and summarize that result.
