@@ -23,10 +23,10 @@ Create the database once, then let Wrangler apply pending files from `migrations
 
 ```bash
 wrangler d1 create triage-results
-wrangler d1 migrations apply triage-results --remote
+npm run migrate
 ```
 
-For future changes, add a new `migrations/*.sql` file and re-run the same `migrations apply` command.
+For future changes, add a new `migrations/*.sql` file and re-run `npm run migrate`.
 
 Bind that database as `TRIAGE_RESULTS` in `wrangler.toml`.
 
