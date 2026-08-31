@@ -17,18 +17,10 @@ wrangler secret put SENTRY_WEBHOOK_SECRET
 
 For v2 investigation/routing, also provide a `PROJECT_REPOSITORY_MAP` JSON env var plus the relevant GitHub, Slack, PagerDuty, and D1 bindings.
 
-## D1 migration
+Setup guides:
 
-Create the database once, then let Wrangler apply pending files from `migrations/` in order:
-
-```bash
-wrangler d1 create triage-results
-npm run migrate
-```
-
-For future changes, add a new `migrations/*.sql` file and re-run `npm run migrate`.
-
-Bind that database as `TRIAGE_RESULTS` in `wrangler.toml`.
+- [docs/setups/github-backed-lookup.md](docs/setups/github-backed-lookup.md)
+- [docs/setups/d1-migrations.md](docs/setups/d1-migrations.md)
 
 ## Run
 
