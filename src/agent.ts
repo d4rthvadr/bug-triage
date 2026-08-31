@@ -5,32 +5,18 @@ import type {
   RankSeverityResult,
 } from './types';
 
-type AiRunResponse = {
-  result?: {
-    response?: string;
-  };
-  response?: string;
-  choices?: Array<{ text?: string; message?: { content?: string } }>;
-};
-
 export type AiLike = {
-  run: (model: string, args: Record<string, unknown>) => Promise<AiRunResponse>;
+  run: (
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    inputs: AiTextGenerationInput,
+    options?: AiOptions,
+  ) => Promise<AiTextGenerationOutput>;
 };
 
-function extractResponseText(response: AiRunResponse | undefined): string | undefined {
-  const resultText = response?.result?.response;
-  if (typeof resultText === 'string' && resultText.trim()) return resultText;
-
-  const legacyText = response?.response;
-  if (typeof legacyText === 'string' && legacyText.trim()) return legacyText;
-
-  const choiceText = response?.choices?.[0]?.text;
-  if (typeof choiceText === 'string' && choiceText.trim()) return choiceText;
-
-  const firstChoice = response?.choices?.[0]?.message;
-  const content = firstChoice?.content;
-  if (typeof content === 'string' && content.trim()) return content;
-
+function extractResponseText(response: AiTextGenerationOutput): string | undefined {
+  if (typeof response.response === 'string' && response.response.trim()) {
+    return response.response;
+  }
   return undefined;
 }
 

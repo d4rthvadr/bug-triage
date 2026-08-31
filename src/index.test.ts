@@ -38,9 +38,7 @@ describe('runTriageAgent', () => {
     const ai = {
       run: vi.fn()
         .mockResolvedValueOnce({
-          result: {
-            response: 'Checkout is failing because an undefined userId is accessed during order creation.',
-          },
+          response: 'Checkout is failing because an undefined userId is accessed during order creation.',
         }),
     };
 
@@ -89,7 +87,7 @@ describe('webhook handler', () => {
     const signature = await makeSignature('secret', body);
     const waitUntil = vi.fn();
     const ai = {
-      run: vi.fn().mockResolvedValue({ result: { response: 'final report' } }),
+      run: vi.fn().mockResolvedValue({ response: 'final report' }),
     };
 
     const request = new Request('http://localhost/webhook/sentry', {
