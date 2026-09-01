@@ -1,7 +1,7 @@
 export type BusinessSeverity = 'P0' | 'P1' | 'P2' | 'P3';
 
 export type NotificationChannel = 'pagerduty' | 'slack' | 'log';
-export type NotificationStatus = 'queued' | 'sent' | 'skipped' | 'not_configured' | 'failed';
+export type NotificationStatus = 'queued' | 'sent' | 'skipped' | 'not_configured' | 'failed' | 'suppressed';
 
 export interface RepositoryRef {
   owner: string;
@@ -111,6 +111,10 @@ export interface TriageReport {
   reportText: string;
   notificationStatus: NotificationStatus;
   createdAt: string;
+  eventRate?: number;
+  affectedUserCount?: number;
+  escalationReason?: string;
+  duplicateOf?: string;
 }
 
 export interface PersistedTriageReport extends TriageReport {

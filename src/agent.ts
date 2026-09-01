@@ -28,6 +28,8 @@ export interface TriageRuntimeDependencies {
   };
   store?: {
     save(report: PersistedTriageReport): Promise<void>;
+    findRecentDuplicate(culprit: string, project: string): Promise<PersistedTriageReport | null>;
+    updateForDuplicate(triageId: string, duplicateEventId: string): Promise<void>;
   };
   rawPayload?: string;
 }
@@ -175,6 +177,61 @@ export async function processTriggeredEvent(
   ai: AiLike,
   dependencies: TriageRuntimeDependencies,
 ): Promise<TriageReport> {
+  const event = payload.data.event;
+  
+  // Check for recent duplicate
+  let isDuplicate = false;
+  let duplicateOf: string | undefined;
+  if (dependencies.store) {
+    const recentDuplicate = await dependencies.store.findRecentDuplicate(event.culprit, event.project);
+    if (recentDuplicate) {
+      isDuplicate = true;
+      duplicateOf = recentDuplicate.id;
+      console.log(
+        `Duplicate detected: Event ${event.id} is a duplicate of ${recentDuplicate.eventId} (triage ${recentDuplicate.id})`,
+      );
+
+      // Suppress notification for duplicate
+      await closeTicket('slack', event.id, 'duplicate', {
+        message: `🔀 This alert was suppressed as a duplicate of ${recentDuplicate.eventId}`,
+        slackWebhookUrl: dependencies.notification.slackWebhookUrl,
+        fetchImpl: dependencies.notification.fetchImpl,
+      });
+
+      await closeTicket('pagerduty', event.id, 'duplicate', {
+        message: `Duplicate of ${recentDuplicate.eventId}`,
+        pagerDutyWebhookUrl: dependencies.notification.pagerDutyWebhookUrl,
+        fetchImpl: dependencies.notification.fetchImpl,
+      });
+
+      // Update original triage record with duplicate info
+      await dependencies.store.updateForDuplicate(recentDuplicate.id, event.id);
+
+      // Return early with suppressed status
+      return {
+        eventId: event.id,
+        title: event.title,
+        project: event.project,
+        level: event.level,
+        culprit: event.culprit,
+        businessSeverity: 'P3',
+        rationale: `Duplicate of event ${recentDuplicate.eventId}`,
+        findings: [],
+        affectedFiles: [],
+        suggestedOwner: undefined,
+        recommendedAction: 'Suppressed as duplicate.',
+        route: {
+          channel: 'log',
+          destination: 'console',
+          status: 'suppressed',
+        },
+        reportText: '',
+        notificationStatus: 'suppressed',
+        createdAt: new Date().toISOString(),
+      };
+    }
+  }
+
   const report = await runTriageAgent(payload, ai, dependencies);
   const notification = await deliverNotification(report, dependencies.notification);
   const persisted = toPersistedTriageReport(
@@ -182,6 +239,7 @@ export async function processTriggeredEvent(
       ...report,
       route: notification.route,
       notificationStatus: notification.status,
+      duplicateOf,
     },
     dependencies.rawPayload,
   );

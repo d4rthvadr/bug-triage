@@ -175,6 +175,8 @@ describe('processTriggeredEvent', () => {
       }),
     };
     const save = vi.fn().mockResolvedValue(undefined);
+    const findRecentDuplicate = vi.fn().mockResolvedValue(null);
+    const updateForDuplicate = vi.fn().mockResolvedValue(undefined);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     const payload = {
@@ -213,7 +215,7 @@ describe('processTriggeredEvent', () => {
         slackWebhookUrl: 'https://slack.example.com/webhook',
         fetchImpl: fetchMock,
       },
-      store: { save },
+      store: { save, findRecentDuplicate, updateForDuplicate },
       rawPayload: JSON.stringify(payload),
     });
 
