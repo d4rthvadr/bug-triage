@@ -106,6 +106,47 @@ describe('auto-remediation flow', () => {
     expect(outcome.status).toBe('not-applicable');
     expect(outcome.reason).toContain('High-severity');
   });
+
+  it('falls back to a failed status instead of throwing when PR creation fails', async () => {
+    const github = {
+      createBranch: vi.fn().mockResolvedValue(undefined),
+      createPullRequest: vi.fn().mockRejectedValue(new Error('GitHub API request failed (422 Unprocessable Entity)')),
+      getFile: vi.fn().mockResolvedValue({
+        content: 'export function loadProfile(user) { return user.userId; }',
+        sha: 'abc123',
+      }),
+      updateFile: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const outcome = await attemptAutoRemediation(
+      {
+        event: {
+          culprit: 'src/services/users/profile.ts',
+          id: 'evt-999',
+          level: 'error',
+          project: 'internal-dashboard',
+          title: 'Profile lookup error',
+        },
+        errorMessage: "Cannot read properties of undefined (reading 'userId')",
+        investigation: {
+          affectedFiles: ['src/services/users/profile.ts'],
+          findings: ['The issue is centered on src/services/users/profile.ts.'],
+          suggestedOwner: 'identity-team',
+        },
+        severity: {
+          businessSeverity: 'P2',
+          rationale: 'Error-level issues outside the customer-critical projects are deferred to normal triage flow.',
+        },
+      },
+      {
+        adapter: github,
+      },
+    );
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.reason).toContain('422');
+    expect(outcome.pullRequestNumber).toBeUndefined();
+  });
 });
 
 describe('agent integration', () => {
@@ -151,6 +192,49 @@ describe('agent integration', () => {
     expect(ai.run).toHaveBeenCalledTimes(1);
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Remediation status: pr-created'));
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Pull request: #42'));
+    logSpy.mockRestore();
+  });
+
+  it('still emits the triage report when GitHub PR creation fails', async () => {
+    const ai = {
+      run: vi.fn().mockResolvedValue({
+        response: 'Profile failures should be guarded before reading userId.',
+      }),
+    };
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    const payload = {
+      action: 'triggered',
+      data: {
+        event: {
+          culprit: 'src/services/users/profile.ts',
+          exception: {
+            values: [{ value: "Cannot read properties of undefined (reading 'userId')", stacktrace: { frames: [{ filename: 'src/services/users/profile.ts' }] } }],
+          },
+          id: 'evt-790',
+          level: 'error',
+          project: 'internal-dashboard',
+          title: 'Profile lookup error',
+        },
+      },
+    };
+
+    const result = await runTriageAgent(payload, ai, {
+      remediationAdapter: {
+        createBranch: vi.fn().mockRejectedValue(new Error('network error')),
+        createPullRequest: vi.fn(),
+        getFile: vi.fn().mockResolvedValue({
+          content: 'export function loadProfile(user) { return user.userId; }',
+          sha: 'sha-43',
+        }),
+        updateFile: vi.fn(),
+      },
+    });
+
+    expect(ai.run).toHaveBeenCalledTimes(1);
+    expect(result).toContain('Profile failures should be guarded');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Remediation status: failed'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Pull request: none'));
     logSpy.mockRestore();
   });
 });

@@ -241,38 +241,61 @@ export async function attemptAutoRemediation(input: {
     files: [{ path: targetFile, content: updatedContent }],
     pattern: decision.pattern,
     pullRequestBody: [
-      `This PR was generated from Sentry event ${input.event.id}.`,
+      `This PR was generated automatically from Sentry event ${input.event.id}.`,
       '',
-      `Triage severity: ${input.severity.businessSeverity}`,
-      `Triage rationale: ${input.severity.rationale}`,
-      `Remediation pattern: ${decision.pattern}`,
-      `Remediation reason: ${decision.reason}`,
+      '## Triage report',
+      `Title: ${input.event.title}`,
+      `Project: ${input.event.project}`,
+      `Level: ${input.event.level}`,
+      `Business severity: ${input.severity.businessSeverity}`,
+      `Rationale: ${input.severity.rationale}`,
+      `Affected files: ${input.investigation.affectedFiles.join(', ') || targetFile}`,
+      `Suggested owner: ${input.investigation.suggestedOwner}`,
+      `Findings: ${input.investigation.findings.join(' ')}`,
+      '',
+      '## Remediation',
+      `Pattern: ${decision.pattern}`,
+      `Rationale: ${decision.reason}`,
       `Target file: ${targetFile}`,
+      '',
+      '## Verification notes',
+      'This patch was generated from a deterministic template and has not been executed or tested.',
+      'Run `npm run check` and `npm test` and review the diff before merging.',
       '',
       'Human review is still required before merge.',
     ].join('\n'),
-    pullRequestTitle: `[auto-remediate] ${input.event.title}`,
+    pullRequestTitle: `[auto-remediate:${decision.pattern}] ${input.event.title}`,
     reason: decision.reason,
     targetFile,
   };
 
-  await github.createBranch(candidate.branchName, baseBranch);
-  await github.updateFile(targetFile, candidate.files[0].content, candidate.branchName, `Apply ${decision.pattern} remediation for ${input.event.id}`, file.sha);
+  try {
+    await github.createBranch(candidate.branchName, baseBranch);
+    await github.updateFile(targetFile, candidate.files[0].content, candidate.branchName, `Apply ${decision.pattern} remediation for ${input.event.id}`, file.sha);
 
-  const pullRequest = await github.createPullRequest({
-    base: baseBranch,
-    body: candidate.pullRequestBody,
-    head: candidate.branchName,
-    title: candidate.pullRequestTitle,
-  });
+    const pullRequest = await github.createPullRequest({
+      base: baseBranch,
+      body: candidate.pullRequestBody,
+      head: candidate.branchName,
+      title: candidate.pullRequestTitle,
+    });
 
-  return {
-    status: 'pr-created',
-    decision,
-    pattern: decision.pattern,
-    reason: `Created GitHub pull request #${pullRequest.number}.`,
-    pullRequestNumber: pullRequest.number,
-    pullRequestUrl: pullRequest.url,
-    targetFile,
-  };
+    return {
+      status: 'pr-created',
+      decision,
+      pattern: decision.pattern,
+      reason: `Created GitHub pull request #${pullRequest.number}.`,
+      pullRequestNumber: pullRequest.number,
+      pullRequestUrl: pullRequest.url,
+      targetFile,
+    };
+  } catch (error) {
+    return {
+      status: 'failed',
+      decision,
+      pattern: decision.pattern,
+      reason: error instanceof Error ? error.message : 'Unable to create the GitHub branch, commit, or pull request.',
+      targetFile,
+    };
+  }
 }
