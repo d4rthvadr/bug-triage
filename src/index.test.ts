@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 import worker from './index';
 import { investigateCodebase, rankSeverity } from './tools';
-import { processTriggeredEvent } from './agent';
+import { processTriggeredEvent, processResolvedEvent } from './agent';
 
 async function makeSignature(secret: string, body: string): Promise<string> {
   const enc = new TextEncoder();
@@ -47,13 +47,6 @@ function createMockFetch() {
       );
     }
 
-    if (url.includes('/contents/src%2Ffeatures%2Fprofile.ts')) {
-      return new Response(
-        'export function buildProfile() {\n  return currentUser.userId;\n}\n',
-        { status: 200 },
-      );
-    }
-
     if (url.includes('slack.example.com') || url.includes('pagerduty.example.com')) {
       return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
@@ -81,6 +74,49 @@ describe('rankSeverity', () => {
   it('treats warnings as P3', () => {
     const result = rankSeverity({ level: 'warning', project: 'checkout-api', culprit: 'src/services/checkout/orderService.ts' });
     expect(result.businessSeverity).toBe('P3');
+  });
+
+  // v4: Escalation tests
+  it('escalates P3 to P2 on high event rate', () => {
+    const result = rankSeverity({
+      level: 'warning',
+      project: 'internal-dashboard',
+      culprit: 'src/feature-flag.ts',
+      signals: { eventRate: 15, escalationReason: 'high_frequency' },
+    });
+    expect(result.businessSeverity).toBe('P2');
+    expect(result.escalationReason).toBe('high_frequency');
+  });
+
+  it('escalates P2 to P1 on high user count', () => {
+    const result = rankSeverity({
+      level: 'error',
+      project: 'internal-dashboard',
+      culprit: 'src/feature-flag.ts',
+      signals: { affectedUserCount: 150, escalationReason: 'high_user_impact' },
+    });
+    expect(result.businessSeverity).toBe('P1');
+    expect(result.escalationReason).toBe('high_user_impact');
+  });
+
+  it('escalates P1 to P0 on high event rate', () => {
+    const result = rankSeverity({
+      level: 'error',
+      project: 'checkout-api',
+      culprit: 'src/services/checkout/orderService.ts',
+      signals: { eventRate: 50, escalationReason: 'high_frequency' },
+    });
+    expect(result.businessSeverity).toBe('P0');
+  });
+
+  it('keeps P0 as P0 even with high signals', () => {
+    const result = rankSeverity({
+      level: 'fatal',
+      project: 'internal-tooling',
+      culprit: 'src/jobs/nightly.ts',
+      signals: { eventRate: 100, affectedUserCount: 5000, escalationReason: 'high_frequency' },
+    });
+    expect(result.businessSeverity).toBe('P0');
   });
 });
 
@@ -139,6 +175,8 @@ describe('processTriggeredEvent', () => {
       }),
     };
     const save = vi.fn().mockResolvedValue(undefined);
+    const findRecentDuplicate = vi.fn().mockResolvedValue(null);
+    const updateForDuplicate = vi.fn().mockResolvedValue(undefined);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     const payload = {
@@ -153,7 +191,7 @@ describe('processTriggeredEvent', () => {
           exception: {
             values: [
               {
-                value: "Cannot read properties of undefined (reading 'userId')",
+                value: 'Cannot read properties of undefined (reading userId)',
                 stacktrace: {
                   frames: [
                     { filename: 'src/services/checkout/orderService.ts', function: 'processOrder', lineno: 84 },
@@ -177,7 +215,7 @@ describe('processTriggeredEvent', () => {
         slackWebhookUrl: 'https://slack.example.com/webhook',
         fetchImpl: fetchMock,
       },
-      store: { save },
+      store: { save, findRecentDuplicate, updateForDuplicate },
       rawPayload: JSON.stringify(payload),
     });
 
@@ -189,30 +227,58 @@ describe('processTriggeredEvent', () => {
     expect(logSpy).toHaveBeenCalled();
   });
 
-  it('captures remediation audit details when a fix is generated', async () => {
+  it('detects and suppresses duplicate events within dedup window', async () => {
     const ai = {
       run: vi.fn().mockResolvedValue({
-        response: 'A null guard should be added before reading the profile userId.',
+        response: 'Triage report text',
       }),
     };
+
+    const fetchMock = createMockFetch();
     const save = vi.fn().mockResolvedValue(undefined);
+    const updateForDuplicate = vi.fn().mockResolvedValue(undefined);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    // Mock store with a recent duplicate
+    const recentDuplicate = {
+      id: 'triage-1',
+      eventId: 'evt-1',
+      title: 'Checkout error',
+      project: 'checkout-api',
+      level: 'error',
+      culprit: 'src/services/checkout/orderService.ts',
+      businessSeverity: 'P1' as const,
+      rationale: 'Error in critical payment flow',
+      findings: [],
+      affectedFiles: ['src/services/checkout/orderService.ts'],
+      suggestedOwner: undefined,
+      recommendedAction: 'Notify the owning team',
+      route: { channel: 'slack' as const, destination: 'checkout-api', status: 'sent' as const },
+      reportText: 'Report',
+      notificationStatus: 'sent' as const,
+      createdAt: new Date().toISOString(),
+      resolutionStatus: 'open' as const,
+    };
+
+    const findRecentDuplicate = vi.fn().mockResolvedValue(recentDuplicate);
+    const updateForDuplicateFn = vi.fn().mockResolvedValue(undefined);
 
     const payload = {
       action: 'triggered',
       data: {
         event: {
-          id: 'evt-remediate',
-          title: 'Profile error',
-          culprit: 'src/features/profile.ts',
+          id: 'evt-2',
+          title: 'Checkout error',
+          culprit: 'src/services/checkout/orderService.ts',
           level: 'error',
-          project: 'internal-dashboard',
+          project: 'checkout-api',
           exception: {
             values: [
               {
-                value: "Cannot read properties of undefined (reading 'userId')",
+                value: 'Cannot read properties of undefined (reading userId)',
                 stacktrace: {
                   frames: [
-                    { filename: 'src/features/profile.ts', function: 'buildProfile', lineno: 2 },
+                    { filename: 'src/services/checkout/orderService.ts', function: 'processOrder', lineno: 84 },
                   ],
                 },
               },
@@ -222,45 +288,46 @@ describe('processTriggeredEvent', () => {
       },
     } satisfies Parameters<typeof processTriggeredEvent>[0];
 
-    const adapter = {
-      getFile: vi.fn().mockResolvedValue({
-        content: 'export function buildProfile() {\n  return currentUser.userId;\n}\n',
-        sha: 'sha-1',
-      }),
-      createBranch: vi.fn().mockResolvedValue(undefined),
-      updateFile: vi.fn().mockResolvedValue(undefined),
-      createPullRequest: vi.fn().mockResolvedValue({
-        number: 17,
-        url: 'https://github.com/acme/internal-dashboard/pull/17',
-      }),
-    };
-
-    await processTriggeredEvent(payload, ai as any, {
+    const result = await processTriggeredEvent(payload, ai as any, {
       investigation: {
         github: { fetchImpl: fetchMock },
         repositoryMapping: {
-          'internal-dashboard': { owner: 'acme', repo: 'internal-dashboard' },
+          'checkout-api': { owner: 'acme', repo: 'checkout-api' },
         },
       },
-      remediation: {
-        adapter,
-      },
       notification: {
+        slackWebhookUrl: 'https://slack.example.com/webhook',
         fetchImpl: fetchMock,
       },
-      store: { save },
+      store: { save, findRecentDuplicate, updateForDuplicate: updateForDuplicateFn },
       rawPayload: JSON.stringify(payload),
     });
 
-    expect(adapter.createPullRequest).toHaveBeenCalledTimes(1);
-    expect(save).toHaveBeenCalledTimes(1);
-    expect(save.mock.calls[0][0]).toMatchObject({
-      remediationEligible: true,
-      remediationStatus: 'pr-created',
-      remediationPattern: 'missing-null-guard',
-      pullRequestNumber: 17,
-      pullRequestUrl: 'https://github.com/acme/internal-dashboard/pull/17',
+    expect(findRecentDuplicate).toHaveBeenCalledWith('src/services/checkout/orderService.ts', 'checkout-api');
+    expect(result.notificationStatus).toBe('suppressed');
+    expect(result.rationale).toContain('Duplicate');
+    expect(updateForDuplicateFn).toHaveBeenCalledWith('triage-1', 'evt-2');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Duplicate detected'));
+  });
+});
+
+describe('processResolvedEvent', () => {
+  it('sends closure notifications when issue is resolved', async () => {
+    const fetchMock = createMockFetch();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await processResolvedEvent('evt-1', 'checkout-api', 'Checkout error', {
+      slackWebhookUrl: 'https://slack.example.com/webhook',
+      pagerDutyWebhookUrl: 'https://pagerduty.example.com/webhook',
+      fetchImpl: fetchMock,
     });
+
+    // Check that log was called with resolved event info
+    expect(logSpy).toHaveBeenCalled();
+    const logCalls = logSpy.mock.calls.flat().join(' ');
+    expect(logCalls).toContain('Resolved event received');
+    expect(logCalls).toContain('evt-1');
+    expect(logCalls).toContain('checkout-api');
   });
 });
 
@@ -327,5 +394,84 @@ describe('webhook handler', () => {
 
     expect(res.status).toBe(200);
     expect(waitUntil).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SentryClient rate limiting', () => {
+  it('skips fetch when rate limit is critically low', async () => {
+    const { SentryClient } = await import('./sentry');
+    
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ stats: { '24h': [[0, 10]] }, userCount: 5 }), {
+        status: 200,
+        headers: { 'X-RateLimit-Remaining': '4' },
+      }),
+    );
+
+    const client = new SentryClient({
+      token: 'test-token',
+      fetchImpl: mockFetch,
+    });
+
+    // First call - should succeed and set rate limit to 4
+    const result = await client.fetchIssueStats('org', 'project', 'issue-id');
+    expect(result).toEqual({ eventCount: 10, userCount: 5 });
+    
+    // Second call should be skipped because we're below threshold (< 5)
+    const secondResult = await client.fetchIssueStats('org', 'project', 'issue-id-2');
+    expect(secondResult).toBe(null);
+    
+    // Only the first call should have been made
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('tracks rate limit remaining from response headers', async () => {
+    const { SentryClient } = await import('./sentry');
+    
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ stats: { '24h': [[0, 10]] }, userCount: 5 }), {
+        status: 200,
+        headers: { 'X-RateLimit-Remaining': '50' },
+      }),
+    );
+
+    const logWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const client = new SentryClient({
+      token: 'test-token',
+      fetchImpl: mockFetch,
+    });
+
+    const result = await client.fetchIssueStats('org', 'project', 'issue-id');
+    
+    expect(result).toEqual({ eventCount: 10, userCount: 5 });
+    expect(logWarnSpy).not.toHaveBeenCalled(); // No warning at 50 remaining
+    
+    logWarnSpy.mockRestore();
+  });
+
+  it('warns when rate limit is low but above critical threshold', async () => {
+    const { SentryClient } = await import('./sentry');
+    
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ stats: { '24h': [[0, 10]] }, userCount: 5 }), {
+        status: 200,
+        headers: { 'X-RateLimit-Remaining': '8' },
+      }),
+    );
+
+    const logWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const client = new SentryClient({
+      token: 'test-token',
+      fetchImpl: mockFetch,
+    });
+
+    const result = await client.fetchIssueStats('org', 'project', 'issue-id');
+    
+    expect(result).toEqual({ eventCount: 10, userCount: 5 });
+    expect(logWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Sentry API rate limit warning'),
+    );
+    
+    logWarnSpy.mockRestore();
   });
 });

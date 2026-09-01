@@ -1,7 +1,7 @@
 export type BusinessSeverity = 'P0' | 'P1' | 'P2' | 'P3';
 
 export type NotificationChannel = 'pagerduty' | 'slack' | 'log';
-export type NotificationStatus = 'queued' | 'sent' | 'skipped' | 'not_configured' | 'failed';
+export type NotificationStatus = 'queued' | 'sent' | 'skipped' | 'not_configured' | 'failed' | 'suppressed';
 
 export interface RepositoryRef {
   owner: string;
@@ -41,15 +41,23 @@ export interface AlertEventPayload {
   };
 }
 
+export interface EventSignals {
+  eventRate?: number; // events in the time window
+  affectedUserCount?: number; // users impacted by this issue
+  escalationReason?: 'high_frequency' | 'high_user_impact' | null;
+}
+
 export interface RankSeverityInput {
   level: string;
   project: string;
   culprit: string;
+  signals?: EventSignals;
 }
 
 export interface RankSeverityResult {
   businessSeverity: BusinessSeverity;
   rationale: string;
+  escalationReason?: string;
 }
 
 export interface InvestigateCodebaseInput {
@@ -89,30 +97,44 @@ export interface TriageRoute {
 
 export interface TriageReport {
   eventId: string;
-  title: string;
-  project: string;
-  level: string;
-  culprit: string;
-  businessSeverity: BusinessSeverity;
-  rationale: string;
-  findings: string[];
-  affectedFiles: string[];
-  suggestedOwner?: string;
-  recommendedAction: string;
-  route: TriageRoute;
-  reportText: string;
-  notificationStatus: NotificationStatus;
-  createdAt: string;
+title: string;
+project: string;
+level: string;
+culprit: string;
+businessSeverity: BusinessSeverity;
+rationale: string;
+findings: string[];
+affectedFiles: string[];
+suggestedOwner?: string;
+recommendedAction: string;
+route: TriageRoute;
+reportText: string;
+notificationStatus: NotificationStatus;
+createdAt: string;
+eventRate?: number;
+affectedUserCount?: number;
+escalationReason?: string;
+duplicateOf?: string;
 }
 
 export interface PersistedTriageReport extends TriageReport {
-  id: string;
-  rawPayload?: string;
-  remediationEligible: boolean;
-  remediationStatus: RemediationOutcome['status'];
-  remediationPattern: RemediationPattern;
-  pullRequestUrl?: string;
-  pullRequestNumber?: number;
+id: string;
+rawPayload?: string;
+remediationEligible: boolean;
+remediationStatus: RemediationOutcome['status'];
+remediationPattern: RemediationPattern;
+pullRequestUrl?: string;
+pullRequestNumber?: number;
+resolvedAt?: string; // timestamp when marked resolved
+resolutionStatus?: 'open' | 'resolved' | 'suppressed';
+}
+
+export interface ResolutionEvent {
+eventId: string;
+project: string;
+title: string;
+status: 'resolved';
+dateResolved: string;
 }
 
 export interface NotificationResult {

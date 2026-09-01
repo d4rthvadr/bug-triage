@@ -11,41 +11,68 @@ import type {
   RemediationDecision,
   RemediationPattern,
   SentryStackFrame,
+  BusinessSeverity,
+  EventSignals,
 } from './types';
 
 const CRITICAL_PROJECTS = ['checkout', 'payment', 'auth', 'api'];
+
+function escalateSeverity(baseSeverity: BusinessSeverity): BusinessSeverity {
+  const escalationMap: Record<BusinessSeverity, BusinessSeverity> = {
+    P0: 'P0',
+    P1: 'P0',
+    P2: 'P1',
+    P3: 'P2',
+  };
+  return escalationMap[baseSeverity];
+}
 
 export function rankSeverity(input: RankSeverityInput): RankSeverityResult {
   const level = input.level.toLowerCase();
   const project = input.project.toLowerCase();
   const culprit = input.culprit.toLowerCase();
 
-  if (level === 'fatal') {
-    return {
-      businessSeverity: 'P0',
-      rationale: 'Fatal Sentry events are highest priority and must be escalated immediately.',
-    };
-  }
+  let baseSeverity: BusinessSeverity;
+  let baseRationale: string;
 
-  if (level === 'error') {
+  if (level === 'fatal') {
+    baseSeverity = 'P0';
+    baseRationale = 'Fatal Sentry events are highest priority and must be escalated immediately.';
+  } else if (level === 'error') {
     const criticalProject = CRITICAL_PROJECTS.some((name) => project.includes(name) || culprit.includes(name));
 
     if (criticalProject) {
-      return {
-        businessSeverity: 'P1',
-        rationale: 'Error-level production issues affecting checkout, payment, auth, or API flows are customer-facing and require rapid response.',
-      };
+      baseSeverity = 'P1';
+      baseRationale = 'Error-level production issues affecting checkout, payment, auth, or API flows are customer-facing and require rapid response.';
+    } else {
+      baseSeverity = 'P2';
+      baseRationale = 'Error-level issues outside the customer-critical projects are deferred to normal triage flow.';
     }
-
-    return {
-      businessSeverity: 'P2',
-      rationale: 'Error-level issues outside the customer-critical projects are deferred to normal triage flow.',
-    };
+  } else {
+    baseSeverity = 'P3';
+    baseRationale = 'Warnings and lower-severity events are monitored, not escalated by default.';
   }
 
+  // v4: Apply signal-based escalation
+  let finalSeverity = baseSeverity;
+  let escalationReason: string | undefined;
+
+  if (input.signals?.escalationReason) {
+    finalSeverity = escalateSeverity(baseSeverity);
+
+    if (input.signals.escalationReason === 'high_frequency') {
+      escalationReason = `Escalated from ${baseSeverity} to ${finalSeverity} due to high event rate (${input.signals.eventRate} events).`;
+    } else if (input.signals.escalationReason === 'high_user_impact') {
+      escalationReason = `Escalated from ${baseSeverity} to ${finalSeverity} due to high user impact (${input.signals.affectedUserCount} affected users).`;
+    }
+  }
+
+  const rationale = escalationReason ?? baseRationale;
+
   return {
-    businessSeverity: 'P3',
-    rationale: 'Warnings and lower-severity events are monitored, not escalated by default.',
+    businessSeverity: finalSeverity,
+    rationale,
+    escalationReason: input.signals?.escalationReason ?? undefined,
   };
 }
 
