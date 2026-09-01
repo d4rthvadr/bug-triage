@@ -52,7 +52,7 @@ export function createD1TriageStore(db: D1Database): TriageStore {
 
       const result = await db
         .prepare(
-          `SELECT id, eventId, title, project, level, businessSeverity, culprit, affectedFiles, suggestedOwner, rationale, createdAt, notificationChannel, notificationStatus, rawPayload, eventRate, affectedUserCount, escalationReason, duplicateOf, resolutionStatus
+         `SELECT id, eventId, title, project, level, businessSeverity, culprit, affectedFiles, suggestedOwner, rationale, createdAt, notificationChannel, notificationStatus, rawPayload, eventRate, affectedUserCount, escalationReason, duplicateOf, resolutionStatus, remediationEligible, remediationStatus, remediationPattern, pullRequestUrl, pullRequestNumber
          FROM triage_results
          WHERE culprit = ? AND project = ? AND createdAt > ? AND resolutionStatus = 'open'
          ORDER BY createdAt DESC
@@ -79,6 +79,11 @@ export function createD1TriageStore(db: D1Database): TriageStore {
           escalationReason?: string;
           duplicateOf?: string;
           resolutionStatus: string;
+         remediationEligible?: number;
+         remediationStatus?: string;
+         remediationPattern?: string;
+         pullRequestUrl?: string;
+         pullRequestNumber?: number;
         }>();
 
       if (!result) return null;
@@ -97,9 +102,9 @@ export function createD1TriageStore(db: D1Database): TriageStore {
         suggestedOwner: result.suggestedOwner || undefined,
         recommendedAction: '',
         route: {
-          channel: (result.notificationChannel as 'slack' | 'pagerduty' | 'log') || 'log',
-          destination: result.project,
-          status: (result.notificationStatus as NotificationStatus) || 'queued',
+         channel: (result.notificationChannel as 'slack' | 'pagerduty' | 'log') || 'log',
+         destination: result.project,
+         status: (result.notificationStatus as NotificationStatus) || 'queued',
         },
         reportText: '',
         notificationStatus: (result.notificationStatus as NotificationStatus) || 'queued',
@@ -110,6 +115,11 @@ export function createD1TriageStore(db: D1Database): TriageStore {
         escalationReason: result.escalationReason || undefined,
         duplicateOf: result.duplicateOf || undefined,
         resolutionStatus: (result.resolutionStatus as 'open' | 'resolved' | 'suppressed') || 'open',
+        remediationEligible: (result.remediationEligible ?? 0) === 1,
+        remediationStatus: (result.remediationStatus || 'none') as RemediationOutcome['status'],
+        remediationPattern: (result.remediationPattern || 'none') as RemediationOutcome['pattern'],
+        pullRequestUrl: result.pullRequestUrl || undefined,
+        pullRequestNumber: result.pullRequestNumber || undefined,
       };
     },
 
