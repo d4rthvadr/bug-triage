@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 import worker from './index';
 import { investigateCodebase, rankSeverity } from './tools';
-import { processTriggeredEvent } from './agent';
+import { processTriggeredEvent, processResolvedEvent } from './agent';
 
 async function makeSignature(secret: string, body: string): Promise<string> {
   const enc = new TextEncoder();
@@ -225,6 +225,109 @@ describe('processTriggeredEvent', () => {
     expect(result.notificationStatus).toBe('sent');
     expect(save).toHaveBeenCalledTimes(1);
     expect(logSpy).toHaveBeenCalled();
+  });
+
+  it('detects and suppresses duplicate events within dedup window', async () => {
+    const ai = {
+      run: vi.fn().mockResolvedValue({
+        response: 'Triage report text',
+      }),
+    };
+
+    const fetchMock = createMockFetch();
+    const save = vi.fn().mockResolvedValue(undefined);
+    const updateForDuplicate = vi.fn().mockResolvedValue(undefined);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    // Mock store with a recent duplicate
+    const recentDuplicate = {
+      id: 'triage-1',
+      eventId: 'evt-1',
+      title: 'Checkout error',
+      project: 'checkout-api',
+      level: 'error',
+      culprit: 'src/services/checkout/orderService.ts',
+      businessSeverity: 'P1' as const,
+      rationale: 'Error in critical payment flow',
+      findings: [],
+      affectedFiles: ['src/services/checkout/orderService.ts'],
+      suggestedOwner: undefined,
+      recommendedAction: 'Notify the owning team',
+      route: { channel: 'slack' as const, destination: 'checkout-api', status: 'sent' as const },
+      reportText: 'Report',
+      notificationStatus: 'sent' as const,
+      createdAt: new Date().toISOString(),
+      resolutionStatus: 'open' as const,
+    };
+
+    const findRecentDuplicate = vi.fn().mockResolvedValue(recentDuplicate);
+    const updateForDuplicateFn = vi.fn().mockResolvedValue(undefined);
+
+    const payload = {
+      action: 'triggered',
+      data: {
+        event: {
+          id: 'evt-2',
+          title: 'Checkout error',
+          culprit: 'src/services/checkout/orderService.ts',
+          level: 'error',
+          project: 'checkout-api',
+          exception: {
+            values: [
+              {
+                value: 'Cannot read properties of undefined (reading userId)',
+                stacktrace: {
+                  frames: [
+                    { filename: 'src/services/checkout/orderService.ts', function: 'processOrder', lineno: 84 },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      },
+    } satisfies Parameters<typeof processTriggeredEvent>[0];
+
+    const result = await processTriggeredEvent(payload, ai as any, {
+      investigation: {
+        github: { fetchImpl: fetchMock },
+        repositoryMapping: {
+          'checkout-api': { owner: 'acme', repo: 'checkout-api' },
+        },
+      },
+      notification: {
+        slackWebhookUrl: 'https://slack.example.com/webhook',
+        fetchImpl: fetchMock,
+      },
+      store: { save, findRecentDuplicate, updateForDuplicate: updateForDuplicateFn },
+      rawPayload: JSON.stringify(payload),
+    });
+
+    expect(findRecentDuplicate).toHaveBeenCalledWith('src/services/checkout/orderService.ts', 'checkout-api');
+    expect(result.notificationStatus).toBe('suppressed');
+    expect(result.rationale).toContain('Duplicate');
+    expect(updateForDuplicateFn).toHaveBeenCalledWith('triage-1', 'evt-2');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Duplicate detected'));
+  });
+});
+
+describe('processResolvedEvent', () => {
+  it('sends closure notifications when issue is resolved', async () => {
+    const fetchMock = createMockFetch();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await processResolvedEvent('evt-1', 'checkout-api', 'Checkout error', {
+      slackWebhookUrl: 'https://slack.example.com/webhook',
+      pagerDutyWebhookUrl: 'https://pagerduty.example.com/webhook',
+      fetchImpl: fetchMock,
+    });
+
+    // Check that log was called with resolved event info
+    expect(logSpy).toHaveBeenCalled();
+    const logCalls = logSpy.mock.calls.flat().join(' ');
+    expect(logCalls).toContain('Resolved event received');
+    expect(logCalls).toContain('evt-1');
+    expect(logCalls).toContain('checkout-api');
   });
 });
 
