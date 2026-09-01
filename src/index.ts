@@ -62,6 +62,19 @@ export default {
       return new Response('Invalid JSON', { status: 400 });
     }
 
+    // Handle resolved events
+    if (payload.action === 'resolved') {
+      const { processResolvedEvent } = await import('./agent');
+      const event = payload.data.event;
+      ctx.waitUntil(
+        processResolvedEvent(event.id, event.project, event.title, {
+          slackWebhookUrl: env.SLACK_WEBHOOK_URL,
+          pagerDutyWebhookUrl: env.PAGERDUTY_WEBHOOK_URL,
+        }),
+      );
+      return new Response('OK', { status: 200 });
+    }
+
     if (payload.action !== 'triggered') {
       return new Response('Ignored', { status: 200 });
     }

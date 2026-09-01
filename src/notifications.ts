@@ -116,3 +116,56 @@ export async function deliverNotification(
 
   return selection;
 }
+
+export async function closeTicket(
+  channel: 'slack' | 'pagerduty',
+  eventId: string,
+  reason: 'resolved' | 'duplicate',
+  metadata?: {
+    message?: string;
+    slackWebhookUrl?: string;
+    pagerDutyWebhookUrl?: string;
+    fetchImpl?: typeof fetch;
+  },
+): Promise<void> {
+  const fetchImpl = metadata?.fetchImpl ?? fetch;
+
+  if (channel === 'slack' && metadata?.slackWebhookUrl) {
+    const closureText = reason === 'resolved' 
+      ? `✅ This issue has been resolved in Sentry.\n${metadata.message || ''}`
+      : `🔀 This alert was suppressed as a duplicate.`;
+
+    try {
+      await postJson(fetchImpl, metadata.slackWebhookUrl, {
+        text: closureText,
+        eventId,
+        reason,
+        resolvedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error(`Failed to send Slack closure for event ${eventId}:`, error);
+    }
+  }
+
+  if (channel === 'pagerduty' && metadata?.pagerDutyWebhookUrl) {
+    const closureText = reason === 'resolved' 
+      ? `Issue resolved: ${metadata.message || eventId}`
+      : `Incident suppressed as duplicate: ${eventId}`;
+
+    try {
+      await postJson(fetchImpl, metadata.pagerDutyWebhookUrl, {
+        routing_key: 'pagerduty-key',
+        event_action: 'resolve',
+        dedup_key: eventId,
+        payload: {
+          summary: closureText,
+          timestamp: new Date().toISOString(),
+          severity: 'info',
+          source: 'bug-triage-agent',
+        },
+      });
+    } catch (error) {
+      console.error(`Failed to send PagerDuty closure for event ${eventId}:`, error);
+    }
+  }
+}

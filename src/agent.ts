@@ -1,4 +1,4 @@
-import { deliverNotification } from './notifications';
+import { deliverNotification, closeTicket } from './notifications';
 import { toPersistedTriageReport } from './store';
 import { investigateCodebase, rankSeverity } from './tools';
 import type {
@@ -8,6 +8,7 @@ import type {
   PersistedTriageReport,
   RankSeverityResult,
   TriageReport,
+  ResolutionEvent,
 } from './types';
 
 export type AiLike = {
@@ -194,4 +195,34 @@ export async function processTriggeredEvent(
     route: notification.route,
     notificationStatus: notification.status,
   };
+}
+
+export async function processResolvedEvent(
+  eventId: string,
+  project: string,
+  title: string,
+  notification: { slackWebhookUrl?: string; pagerDutyWebhookUrl?: string; fetchImpl?: typeof fetch },
+): Promise<void> {
+  const closureMessage = [
+    `✅ Issue Resolved`,
+    `Event ID: ${eventId}`,
+    `Project: ${project}`,
+    `Title: ${title}`,
+    `Resolved at: ${new Date().toISOString()}`,
+  ].join('\n');
+
+  console.log('Resolved event received:', closureMessage);
+
+  // Send closure notifications to Slack and PagerDuty
+  await closeTicket('slack', eventId, 'resolved', {
+    message: closureMessage,
+    slackWebhookUrl: notification.slackWebhookUrl,
+    fetchImpl: notification.fetchImpl,
+  });
+
+  await closeTicket('pagerduty', eventId, 'resolved', {
+    message: closureMessage,
+    pagerDutyWebhookUrl: notification.pagerDutyWebhookUrl,
+    fetchImpl: notification.fetchImpl,
+  });
 }
