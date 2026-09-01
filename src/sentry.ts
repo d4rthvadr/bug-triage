@@ -20,6 +20,7 @@ export class SentryClient {
   private token?: string;
   private baseUrl: string;
   private fetch: typeof fetch;
+  private rateLimitRemaining: number = 100; // Conservative initial value
 
   constructor(config: SentryClientConfig) {
     this.token = config.token;
@@ -28,12 +29,27 @@ export class SentryClient {
   }
 
   /**
+   * Check if we're approaching Sentry API rate limits.
+   * Returns true if we should skip fetching to avoid hitting the limit.
+   */
+  isRateLimited(): boolean {
+    // Skip signal fetching if remaining quota is very low (< 5 requests)
+    return this.rateLimitRemaining < 5;
+  }
+
+  /**
    * Fetch issue statistics from Sentry API.
    * Returns event count and affected user count for an issue.
+   * Returns null if rate limited or credentials missing.
    */
   async fetchIssueStats(org: string, project: string, issueId: string): Promise<SentryIssueStats | null> {
     if (!this.token) {
       return null; // No credentials, skip signal fetching
+    }
+
+    if (this.isRateLimited()) {
+      console.warn('Sentry API rate limit approaching; skipping signal fetch');
+      return null; // Gracefully degrade to avoid rate limit errors
     }
 
     try {
@@ -44,6 +60,15 @@ export class SentryClient {
           'Content-Type': 'application/json',
         },
       });
+
+      // Update rate limit tracker from response headers
+      const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
+      if (rateLimitRemaining) {
+        this.rateLimitRemaining = parseInt(rateLimitRemaining, 10);
+        if (this.rateLimitRemaining < 10) {
+          console.warn(`Sentry API rate limit warning: ${this.rateLimitRemaining} requests remaining`);
+        }
+      }
 
       if (!response.ok) {
         console.error(`Sentry API error: ${response.status} ${response.statusText}`);

@@ -396,3 +396,82 @@ describe('webhook handler', () => {
     expect(waitUntil).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('SentryClient rate limiting', () => {
+  it('skips fetch when rate limit is critically low', async () => {
+    const { SentryClient } = await import('./sentry');
+    
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ stats: { '24h': [[0, 10]] }, userCount: 5 }), {
+        status: 200,
+        headers: { 'X-RateLimit-Remaining': '4' },
+      }),
+    );
+
+    const client = new SentryClient({
+      token: 'test-token',
+      fetchImpl: mockFetch,
+    });
+
+    // First call - should succeed and set rate limit to 4
+    const result = await client.fetchIssueStats('org', 'project', 'issue-id');
+    expect(result).toEqual({ eventCount: 10, userCount: 5 });
+    
+    // Second call should be skipped because we're below threshold (< 5)
+    const secondResult = await client.fetchIssueStats('org', 'project', 'issue-id-2');
+    expect(secondResult).toBe(null);
+    
+    // Only the first call should have been made
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('tracks rate limit remaining from response headers', async () => {
+    const { SentryClient } = await import('./sentry');
+    
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ stats: { '24h': [[0, 10]] }, userCount: 5 }), {
+        status: 200,
+        headers: { 'X-RateLimit-Remaining': '50' },
+      }),
+    );
+
+    const logWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const client = new SentryClient({
+      token: 'test-token',
+      fetchImpl: mockFetch,
+    });
+
+    const result = await client.fetchIssueStats('org', 'project', 'issue-id');
+    
+    expect(result).toEqual({ eventCount: 10, userCount: 5 });
+    expect(logWarnSpy).not.toHaveBeenCalled(); // No warning at 50 remaining
+    
+    logWarnSpy.mockRestore();
+  });
+
+  it('warns when rate limit is low but above critical threshold', async () => {
+    const { SentryClient } = await import('./sentry');
+    
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ stats: { '24h': [[0, 10]] }, userCount: 5 }), {
+        status: 200,
+        headers: { 'X-RateLimit-Remaining': '8' },
+      }),
+    );
+
+    const logWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const client = new SentryClient({
+      token: 'test-token',
+      fetchImpl: mockFetch,
+    });
+
+    const result = await client.fetchIssueStats('org', 'project', 'issue-id');
+    
+    expect(result).toEqual({ eventCount: 10, userCount: 5 });
+    expect(logWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Sentry API rate limit warning'),
+    );
+    
+    logWarnSpy.mockRestore();
+  });
+});
