@@ -315,7 +315,9 @@ v4 is successful when all of the following are true:
 
 ## Risks and Constraints
 
-- Sentry API rate limits may throttle signal fetching during high-volume incidents (mitigation: cache signals in D1 or use batch API)
+- Sentry API rate limits may throttle signal fetching during high-volume incidents
+  - **Mitigation (v4)**: SentryClient tracks `X-RateLimit-Remaining` header; skips fetch if < 5 requests remain; gracefully degrades to base severity if rate-limited
+  - **Future optimization**: D1 caching or batch API (v5)
 - Missing or incomplete user count data may reduce escalation accuracy (mitigation: default to no escalation if data unavailable)
 - Deduplication window (10 min) may be too short for slow-rolling incident patterns (mitigation: make configurable, monitor false negatives)
 - Ticket closure in Slack or PagerDuty may fail; ensure D1 record still updates even if notification fails

@@ -110,7 +110,7 @@ If signal fetching fails, use base severity (no escalation).
 1. **Event rate and user count thresholds** → tune based on post-incident review metrics
 2. **Dedup window (10 min)** → make configurable per project via config or D1 settings table
 3. **Resolved-event closure logic** → add thread updates in Slack or PagerDuty comment threads
-4. **Sentry API rate-limit handling** → add caching or batch API if signal fetching becomes a bottleneck
+4. **Sentry API rate-limit optimization** → v4 includes basic protection (skip fetch if < 5 requests remain); future: add caching or batch API if signal fetching becomes a bottleneck
 
 ## References
 
