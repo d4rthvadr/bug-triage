@@ -156,3 +156,26 @@ export interface GitHubRemediationConfig {
   baseBranch?: string;
   apiBaseUrl?: string;
 }
+
+/**
+ * Append-only audit trail record for a single triage event. Mirrors the v2
+ * `triage_results` schema, extended with the v3 remediation audit fields.
+ */
+export interface TriageAuditRecord {
+  id: string;
+  eventId: string;
+  title: string;
+  project: string;
+  level: string;
+  businessSeverity: BusinessSeverity;
+  culprit: string;
+  affectedFiles: string[];
+  suggestedOwner: string;
+  rationale: string;
+  createdAt: string;
+  remediationEligible: boolean;
+  remediationStatus: RemediationOutcome['status'];
+  remediationPattern: RemediationPattern;
+  pullRequestUrl?: string;
+  pullRequestNumber?: number;
+}

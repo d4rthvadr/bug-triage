@@ -5,6 +5,7 @@ import type { AlertEventPayload } from './types';
 
 export interface Env {
   AI: AiLike;
+  DB: D1Database;
   SENTRY_WEBHOOK_SECRET?: string;
   GITHUB_TOKEN?: string;
   GITHUB_API_BASE_URL?: string;

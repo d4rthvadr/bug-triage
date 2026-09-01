@@ -237,32 +237,3 @@ export function slugifyRemediationToken(value: string): string {
 export function buildRemediationBranchName(eventId: string, pattern: RemediationPattern): string {
   return `auto-remediate/${slugifyRemediationToken(eventId) || 'event'}/${pattern}`;
 }
-
-export function findReportedLine(stackFrames: SentryStackFrame[], targetFile: string): number | undefined {
-  const matches = stackFrames.filter(
-    (frame): frame is SentryStackFrame & { lineno: number } => frame.filename === targetFile && typeof frame.lineno === 'number',
-  );
-
-  return matches.length > 0 ? matches[matches.length - 1].lineno : undefined;
-}
-
-export function applyNullGuardPatch(content: string, property: string, targetLine: number): string | null {
-  const lines = content.split('\n');
-  const lineIndex = targetLine - 1;
-
-  if (lineIndex < 0 || lineIndex >= lines.length) {
-    return null;
-  }
-
-  const escapedProperty = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`(^|[^?])\\.${escapedProperty}\\b`);
-  const line = lines[lineIndex];
-  const patchedLine = line.replace(pattern, `$1?.${property}`);
-
-  if (patchedLine === line) {
-    return null;
-  }
-
-  lines[lineIndex] = patchedLine;
-  return lines.join('\n');
-}

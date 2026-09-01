@@ -10,6 +10,7 @@ describe('remediation detection', () => {
       culprit: 'src/services/users/profile.ts',
       errorMessage: "Cannot read properties of undefined (reading 'userId')",
       findings: ['The issue is centered on src/services/users/profile.ts.'],
+      affectedFiles: ['src/services/users/profile.ts'],
       severity: 'P2',
       title: 'Profile lookup error',
     });
@@ -18,13 +19,33 @@ describe('remediation detection', () => {
     expect(decision.pattern).toBe('missing-null-guard');
     expect(decision.property).toBe('userId');
   });
+
+  it('rejects remediation when no affected files were investigated', () => {
+    const decision = detectRemediationDecision({
+      culprit: 'src/services/users/profile.ts',
+      errorMessage: "Cannot read properties of undefined (reading 'userId')",
+      findings: ['The issue is centered on src/services/users/profile.ts.'],
+      affectedFiles: [],
+      severity: 'P2',
+      title: 'Profile lookup error',
+    });
+
+    expect(decision.eligible).toBe(false);
+    expect(decision.reason).toContain('Insufficient code context');
+  });
 });
 
 describe('null-guard patching', () => {
-  it('adds optional chaining to the first direct property access', () => {
-    const patched = applyNullGuardPatch('const id = user.userId;\nreturn id;', 'userId');
+  it('adds optional chaining only on the reported line', () => {
+    const patched = applyNullGuardPatch('const id = user.userId;\nreturn id;', 'userId', 1);
 
     expect(patched).toBe('const id = user?.userId;\nreturn id;');
+  });
+
+  it('fails closed when the reported line cannot be patched confidently', () => {
+    const patched = applyNullGuardPatch('const id = user.userId;\nreturn id;', 'userId', 2);
+
+    expect(patched).toBeNull();
   });
 });
 
@@ -37,7 +58,7 @@ describe('auto-remediation flow', () => {
         url: 'https://github.com/acme/app/pull/7',
       }),
       getFile: vi.fn().mockResolvedValue({
-        content: 'export function loadProfile(user) { return user.userId; }',
+        content: 'const id = user.userId;\nreturn id;',
         sha: 'abc123',
       }),
       updateFile: vi.fn().mockResolvedValue(undefined),
@@ -51,6 +72,9 @@ describe('auto-remediation flow', () => {
           level: 'error',
           project: 'internal-dashboard',
           title: 'Profile lookup error',
+          exception: {
+            values: [{ value: "Cannot read properties of undefined (reading 'userId')", stacktrace: { frames: [{ filename: 'src/services/users/profile.ts', lineno: 1 }] } }],
+          },
         },
         errorMessage: "Cannot read properties of undefined (reading 'userId')",
         investigation: {
@@ -73,11 +97,53 @@ describe('auto-remediation flow', () => {
     expect(github.createBranch).toHaveBeenCalledWith('auto-remediate/evt-123/missing-null-guard', 'main');
     expect(github.updateFile).toHaveBeenCalledWith(
       'src/services/users/profile.ts',
-      'export function loadProfile(user) { return user?.userId; }',
+      'const id = user?.userId;\nreturn id;',
       'auto-remediate/evt-123/missing-null-guard',
       'Apply missing-null-guard remediation for evt-123',
       'abc123',
     );
+  });
+
+  it('skips remediation when investigation returns no affected files', async () => {
+    const github = {
+      createBranch: vi.fn().mockResolvedValue(undefined),
+      createPullRequest: vi.fn(),
+      getFile: vi.fn().mockResolvedValue({
+        content: 'const id = user.userId;\nreturn id;',
+        sha: 'abc123',
+      }),
+      updateFile: vi.fn().mockRejectedValue(new Error('network error')),
+    };
+
+    const outcome = await attemptAutoRemediation(
+      {
+        event: {
+          culprit: 'src/services/users/profile.ts',
+          id: 'evt-124',
+          level: 'error',
+          project: 'internal-dashboard',
+          title: 'Profile lookup error',
+          exception: {
+            values: [{ value: "Cannot read properties of undefined (reading 'userId')", stacktrace: { frames: [{ filename: 'src/services/users/profile.ts', lineno: 1 }] } }],
+          },
+        },
+        errorMessage: "Cannot read properties of undefined (reading 'userId')",
+        investigation: {
+          affectedFiles: [],
+          findings: ['No stack-frame filenames were present.'],
+          suggestedOwner: 'identity-team',
+        },
+        severity: {
+          businessSeverity: 'P2',
+          rationale: 'Error-level issues outside the customer-critical projects are deferred to normal triage flow.',
+        },
+      },
+      { adapter: github },
+    );
+
+    expect(outcome.status).toBe('not-applicable');
+    expect(outcome.reason).toContain('Insufficient code context');
+    expect(github.getFile).not.toHaveBeenCalled();
   });
 
   it('skips P1 alerts', async () => {
@@ -112,7 +178,7 @@ describe('auto-remediation flow', () => {
       createBranch: vi.fn().mockResolvedValue(undefined),
       createPullRequest: vi.fn().mockRejectedValue(new Error('GitHub API request failed (422 Unprocessable Entity)')),
       getFile: vi.fn().mockResolvedValue({
-        content: 'export function loadProfile(user) { return user.userId; }',
+        content: 'const id = user.userId;\nreturn id;',
         sha: 'abc123',
       }),
       updateFile: vi.fn().mockResolvedValue(undefined),
@@ -126,6 +192,9 @@ describe('auto-remediation flow', () => {
           level: 'error',
           project: 'internal-dashboard',
           title: 'Profile lookup error',
+          exception: {
+            values: [{ value: "Cannot read properties of undefined (reading 'userId')", stacktrace: { frames: [{ filename: 'src/services/users/profile.ts', lineno: 1 }] } }],
+          },
         },
         errorMessage: "Cannot read properties of undefined (reading 'userId')",
         investigation: {
@@ -164,7 +233,7 @@ describe('agent integration', () => {
         event: {
           culprit: 'src/services/users/profile.ts',
           exception: {
-            values: [{ value: "Cannot read properties of undefined (reading 'userId')", stacktrace: { frames: [{ filename: 'src/services/users/profile.ts' }] } }],
+            values: [{ value: "Cannot read properties of undefined (reading 'userId')", stacktrace: { frames: [{ filename: 'src/services/users/profile.ts', lineno: 1 }] } }],
           },
           id: 'evt-789',
           level: 'error',
@@ -182,7 +251,7 @@ describe('agent integration', () => {
           url: 'https://github.com/acme/app/pull/42',
         }),
         getFile: vi.fn().mockResolvedValue({
-          content: 'export function loadProfile(user) { return user.userId; }',
+          content: 'const id = user.userId;\nreturn id;',
           sha: 'sha-42',
         }),
         updateFile: vi.fn().mockResolvedValue(undefined),
@@ -209,7 +278,7 @@ describe('agent integration', () => {
         event: {
           culprit: 'src/services/users/profile.ts',
           exception: {
-            values: [{ value: "Cannot read properties of undefined (reading 'userId')", stacktrace: { frames: [{ filename: 'src/services/users/profile.ts' }] } }],
+            values: [{ value: "Cannot read properties of undefined (reading 'userId')", stacktrace: { frames: [{ filename: 'src/services/users/profile.ts', lineno: 1 }] } }],
           },
           id: 'evt-790',
           level: 'error',
@@ -224,7 +293,7 @@ describe('agent integration', () => {
         createBranch: vi.fn().mockRejectedValue(new Error('network error')),
         createPullRequest: vi.fn(),
         getFile: vi.fn().mockResolvedValue({
-          content: 'export function loadProfile(user) { return user.userId; }',
+          content: 'const id = user.userId;\nreturn id;',
           sha: 'sha-43',
         }),
         updateFile: vi.fn(),

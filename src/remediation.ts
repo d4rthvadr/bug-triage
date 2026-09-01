@@ -1,4 +1,4 @@
-import { applyNullGuardPatch, buildRemediationBranchName, detectRemediationDecision } from './tools';
+import { applyNullGuardPatch, buildRemediationBranchName, detectRemediationDecision, findReportedLine } from './tools';
 import type {
   GitHubRemediationConfig,
   InvestigationResult,
@@ -158,6 +158,7 @@ export async function attemptAutoRemediation(input: {
     culprit: input.event.culprit,
     errorMessage: input.errorMessage,
     findings: input.investigation.findings,
+    affectedFiles: input.investigation.affectedFiles,
     severity: input.severity.businessSeverity,
     title: input.event.title,
   });
@@ -171,13 +172,13 @@ export async function attemptAutoRemediation(input: {
     };
   }
 
-  const targetFile = input.investigation.affectedFiles[0] ?? input.event.culprit;
+  const targetFile = input.investigation.affectedFiles[0];
   if (!targetFile) {
     return {
-      status: 'skipped',
+      status: 'not-applicable',
       decision,
       pattern: decision.pattern,
-      reason: 'No target file was available for remediation.',
+      reason: 'Insufficient code context: investigation returned no affected files, so the alert is not eligible for auto-remediation.',
     };
   }
 
@@ -211,6 +212,17 @@ export async function attemptAutoRemediation(input: {
     };
   }
 
+  const targetLine = findReportedLine(input.event.exception?.values?.[0]?.stacktrace?.frames ?? [], targetFile);
+  if (!targetLine) {
+    return {
+      status: 'failed',
+      decision,
+      pattern: decision.pattern,
+      reason: `Unable to confidently localize the patch for ${targetFile} from the reported stack frames.`,
+      targetFile,
+    };
+  }
+
   let file;
   try {
     file = await github.getFile(targetFile, baseBranch);
@@ -224,13 +236,13 @@ export async function attemptAutoRemediation(input: {
     };
   }
 
-  const updatedContent = applyNullGuardPatch(file.content, decision.property);
+  const updatedContent = applyNullGuardPatch(file.content, decision.property, targetLine);
   if (!updatedContent) {
     return {
       status: 'failed',
       decision,
       pattern: decision.pattern,
-      reason: `Could not find a direct access to ${decision.property} that could be patched safely.`,
+      reason: `Could not confidently patch ${decision.property} at line ${targetLine} in ${targetFile}.`,
       targetFile,
     };
   }
