@@ -157,12 +157,30 @@ export class SentryClient {
 - `SentryClient rate limiting > tracks rate limit remaining from response headers` ✓
 - `SentryClient rate limiting > warns when rate limit is low but above critical threshold` ✓
 
+## Current Limitation: Per-Request Tracking
+
+In v4, `SentryClient.rateLimitRemaining` is stored **only for the request lifecycle**. Each new Worker invocation resets to 100, relying on Sentry's `X-RateLimit-Remaining` header to report the real quota.
+
+**Why this works**: Sentry includes the header in every response, so we always learn the true quota immediately after each call.
+
+**Why it's limited**: No cross-request memory means:
+- Quota trend is invisible (can't predict when we'll hit the limit)
+- Detection is reactive, not proactive (we skip only after seeing Sentry tell us remaining < 5)
+- Opportunity for smarter quota budgeting is missed
+
 ## Follow-Up Work
 
-1. **v5 optimization**: Implement D1 caching or batch API after load testing
-2. **Monitoring**: Add metric for "rate-limit skip events" in production dashboard
-3. **Configuration**: Make EVENT_RATE_THRESHOLD and USER_COUNT_THRESHOLD environment-configurable
-4. **Escalation**: If rate-limit skips exceed 5% of events in an hour, alert on-call team to investigate
+1. **v5 enhancement: Cross-request quota tracking via D1**
+   - Store quota state in D1: `{ org_name, remaining, last_updated, last_reset }`
+   - Implement quota decay model (Sentry resets quota hourly; estimate current remaining based on timestamp)
+   - Load quota from D1 before fetching; make smarter skip decisions
+   - Update D1 after each successful call
+   - Benefit: Proactive skipping, quota visibility across requests, incident response planning
+
+2. **v5 optimization**: Implement batch API or issue stats caching after load testing
+3. **Monitoring**: Add metric for "rate-limit skip events" in production dashboard
+4. **Configuration**: Make EVENT_RATE_THRESHOLD and USER_COUNT_THRESHOLD environment-configurable
+5. **Escalation**: If rate-limit skips exceed 5% of events in an hour, alert on-call team to investigate
 
 ## References
 
