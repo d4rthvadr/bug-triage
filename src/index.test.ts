@@ -75,6 +75,49 @@ describe('rankSeverity', () => {
     const result = rankSeverity({ level: 'warning', project: 'checkout-api', culprit: 'src/services/checkout/orderService.ts' });
     expect(result.businessSeverity).toBe('P3');
   });
+
+  // v4: Escalation tests
+  it('escalates P3 to P2 on high event rate', () => {
+    const result = rankSeverity({
+      level: 'warning',
+      project: 'internal-dashboard',
+      culprit: 'src/feature-flag.ts',
+      signals: { eventRate: 15, escalationReason: 'high_frequency' },
+    });
+    expect(result.businessSeverity).toBe('P2');
+    expect(result.escalationReason).toBe('high_frequency');
+  });
+
+  it('escalates P2 to P1 on high user count', () => {
+    const result = rankSeverity({
+      level: 'error',
+      project: 'internal-dashboard',
+      culprit: 'src/feature-flag.ts',
+      signals: { affectedUserCount: 150, escalationReason: 'high_user_impact' },
+    });
+    expect(result.businessSeverity).toBe('P1');
+    expect(result.escalationReason).toBe('high_user_impact');
+  });
+
+  it('escalates P1 to P0 on high event rate', () => {
+    const result = rankSeverity({
+      level: 'error',
+      project: 'checkout-api',
+      culprit: 'src/services/checkout/orderService.ts',
+      signals: { eventRate: 50, escalationReason: 'high_frequency' },
+    });
+    expect(result.businessSeverity).toBe('P0');
+  });
+
+  it('keeps P0 as P0 even with high signals', () => {
+    const result = rankSeverity({
+      level: 'fatal',
+      project: 'internal-tooling',
+      culprit: 'src/jobs/nightly.ts',
+      signals: { eventRate: 100, affectedUserCount: 5000, escalationReason: 'high_frequency' },
+    });
+    expect(result.businessSeverity).toBe('P0');
+  });
 });
 
 describe('investigateCodebase', () => {
