@@ -25,6 +25,7 @@ export interface TriageRuntimeDependencies {
     pagerDutyWebhookUrl?: string;
     fetchImpl?: typeof fetch;
   };
+  remediationAdapter?: unknown;
   store?: {
     save(report: PersistedTriageReport): Promise<void>;
   };
