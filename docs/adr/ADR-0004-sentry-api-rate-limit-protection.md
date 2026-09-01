@@ -170,14 +170,25 @@ In v4, `SentryClient.rateLimitRemaining` is stored **only for the request lifecy
 
 ## Follow-Up Work
 
-1. **v5 enhancement: Cross-request quota tracking via D1**
+1. **v6 architectural evolution: Event queue + single consumer worker**
+   - **Current model (v4)**: Each Sentry webhook invokes a Worker directly → concurrent Workers race on rate limits
+   - **Future model (v6)**: Sentry webhook → push event to Durable Object queue or Cloudflare Queue → single consumer Worker processes sequentially
+   - **Benefits**: 
+     - Eliminates concurrent worker rate-limit collisions
+     - Single consumer has full quota visibility and can budget intelligently
+     - Serialization enables idempotent processing and audit trails
+     - Natural fit with D1 quota tracking (one writer, no contention)
+   - **Trade-off**: Added latency (queuing + consumption) vs. current immediate processing; acceptable for triage (alerts are async by nature)
+
+2. **v5 enhancement: Cross-request quota tracking via D1**
    - Store quota state in D1: `{ org_name, remaining, last_updated, last_reset }`
    - Implement quota decay model (Sentry resets quota hourly; estimate current remaining based on timestamp)
    - Load quota from D1 before fetching; make smarter skip decisions
    - Update D1 after each successful call
    - Benefit: Proactive skipping, quota visibility across requests, incident response planning
+   - **Note**: D1 quota tracking becomes much simpler in v6 (single consumer, no write contention)
 
-2. **v5 optimization**: Implement batch API or issue stats caching after load testing
+3. **v5 optimization**: Implement batch API or issue stats caching after load testing
 3. **Monitoring**: Add metric for "rate-limit skip events" in production dashboard
 4. **Configuration**: Make EVENT_RATE_THRESHOLD and USER_COUNT_THRESHOLD environment-configurable
 5. **Escalation**: If rate-limit skips exceed 5% of events in an hour, alert on-call team to investigate
