@@ -22,6 +22,32 @@ Setup guides:
 - [docs/setups/github-backed-lookup.md](docs/setups/github-backed-lookup.md)
 - [docs/setups/d1-migrations.md](docs/setups/d1-migrations.md)
 
+`wrangler.toml` example:
+
+```toml
+name = "bug-triage"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "TRIAGE_RESULTS"
+database_name = "triage-results"
+database_id = "<your-d1-database-id>"
+```
+
+Set related secrets:
+
+```bash
+wrangler secret put SENTRY_WEBHOOK_SECRET
+wrangler secret put GITHUB_TOKEN
+wrangler secret put PROJECT_REPOSITORY_MAP
+wrangler secret put SLACK_WEBHOOK_URL
+wrangler secret put PAGERDUTY_WEBHOOK_URL
+```
+
 ## Run
 
 ```bash
