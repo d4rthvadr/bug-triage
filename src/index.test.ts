@@ -47,6 +47,13 @@ function createMockFetch() {
       );
     }
 
+    if (url.includes('/contents/src%2Ffeatures%2Fprofile.ts')) {
+      return new Response(
+        'export function buildProfile() {\n  return currentUser.userId;\n}\n',
+        { status: 200 },
+      );
+    }
+
     if (url.includes('slack.example.com') || url.includes('pagerduty.example.com')) {
       return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
@@ -146,7 +153,7 @@ describe('processTriggeredEvent', () => {
           exception: {
             values: [
               {
-                value: 'Cannot read properties of undefined (reading userId)',
+                value: "Cannot read properties of undefined (reading 'userId')",
                 stacktrace: {
                   frames: [
                     { filename: 'src/services/checkout/orderService.ts', function: 'processOrder', lineno: 84 },
@@ -180,6 +187,80 @@ describe('processTriggeredEvent', () => {
     expect(result.notificationStatus).toBe('sent');
     expect(save).toHaveBeenCalledTimes(1);
     expect(logSpy).toHaveBeenCalled();
+  });
+
+  it('captures remediation audit details when a fix is generated', async () => {
+    const ai = {
+      run: vi.fn().mockResolvedValue({
+        response: 'A null guard should be added before reading the profile userId.',
+      }),
+    };
+    const save = vi.fn().mockResolvedValue(undefined);
+
+    const payload = {
+      action: 'triggered',
+      data: {
+        event: {
+          id: 'evt-remediate',
+          title: 'Profile error',
+          culprit: 'src/features/profile.ts',
+          level: 'error',
+          project: 'internal-dashboard',
+          exception: {
+            values: [
+              {
+                value: "Cannot read properties of undefined (reading 'userId')",
+                stacktrace: {
+                  frames: [
+                    { filename: 'src/features/profile.ts', function: 'buildProfile', lineno: 2 },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      },
+    } satisfies Parameters<typeof processTriggeredEvent>[0];
+
+    const adapter = {
+      getFile: vi.fn().mockResolvedValue({
+        content: 'export function buildProfile() {\n  return currentUser.userId;\n}\n',
+        sha: 'sha-1',
+      }),
+      createBranch: vi.fn().mockResolvedValue(undefined),
+      updateFile: vi.fn().mockResolvedValue(undefined),
+      createPullRequest: vi.fn().mockResolvedValue({
+        number: 17,
+        url: 'https://github.com/acme/internal-dashboard/pull/17',
+      }),
+    };
+
+    await processTriggeredEvent(payload, ai as any, {
+      investigation: {
+        github: { fetchImpl: fetchMock },
+        repositoryMapping: {
+          'internal-dashboard': { owner: 'acme', repo: 'internal-dashboard' },
+        },
+      },
+      remediation: {
+        adapter,
+      },
+      notification: {
+        fetchImpl: fetchMock,
+      },
+      store: { save },
+      rawPayload: JSON.stringify(payload),
+    });
+
+    expect(adapter.createPullRequest).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0][0]).toMatchObject({
+      remediationEligible: true,
+      remediationStatus: 'pr-created',
+      remediationPattern: 'missing-null-guard',
+      pullRequestNumber: 17,
+      pullRequestUrl: 'https://github.com/acme/internal-dashboard/pull/17',
+    });
   });
 });
 

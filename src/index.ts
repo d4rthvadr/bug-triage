@@ -75,6 +75,10 @@ export default {
         },
         repositoryMapping: buildRepositoryMapping(env),
       },
+      remediation: {
+        token: env.GITHUB_TOKEN,
+        apiBaseUrl: env.GITHUB_API_BASE_URL,
+      },
       notification: {
         slackWebhookUrl: env.SLACK_WEBHOOK_URL,
         pagerDutyWebhookUrl: env.PAGERDUTY_WEBHOOK_URL,

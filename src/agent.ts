@@ -1,4 +1,6 @@
 import { deliverNotification } from './notifications';
+import { resolveRepository } from './config';
+import { attemptAutoRemediation, type GitHubRemediationAdapter } from './remediation';
 import { toPersistedTriageReport } from './store';
 import { investigateCodebase, rankSeverity } from './tools';
 import type {
@@ -25,7 +27,12 @@ export interface TriageRuntimeDependencies {
     pagerDutyWebhookUrl?: string;
     fetchImpl?: typeof fetch;
   };
-  remediationAdapter?: unknown;
+  remediation?: {
+    token?: string;
+    apiBaseUrl?: string;
+    baseBranch?: string;
+    adapter?: GitHubRemediationAdapter;
+  };
   store?: {
     save(report: PersistedTriageReport): Promise<void>;
   };
@@ -76,6 +83,21 @@ function selectRoute(severity: RankSeverityResult, project: string): TriageRepor
   };
 }
 
+function logTriageReport(report: TriageReport): void {
+  console.log(
+    [
+      `Event ID: ${report.eventId}`,
+      `Title: ${report.title}`,
+      `Project: ${report.project}`,
+      `Level: ${report.level}`,
+      `Severity: ${report.businessSeverity}`,
+      `Route: ${report.route.channel}:${report.route.destination}`,
+      '',
+      report.reportText,
+    ].join('\n'),
+  );
+}
+
 async function synthesizeReport(
   payload: AlertEventPayload,
   ai: AiLike,
@@ -113,11 +135,15 @@ async function synthesizeReport(
   return finalReportText;
 }
 
-export async function runTriageAgent(
+async function buildTriageContext(
   payload: AlertEventPayload,
   ai: AiLike,
   dependencies: TriageRuntimeDependencies,
-): Promise<TriageReport> {
+): Promise<{
+  report: TriageReport;
+  severity: RankSeverityResult;
+  investigation: InvestigationResult;
+}> {
   const event = payload.data.event;
   const severity = rankSeverity({
     level: event.level,
@@ -136,37 +162,36 @@ export async function runTriageAgent(
   const reportText = await synthesizeReport(payload, ai, severity, investigation);
   const route = selectRoute(severity, event.project);
 
-  const report: TriageReport = {
-    eventId: event.id,
-    title: event.title,
-    project: event.project,
-    level: event.level,
-    culprit: event.culprit,
-    businessSeverity: severity.businessSeverity,
-    rationale: severity.rationale,
-    findings: investigation.findings,
-    affectedFiles: investigation.affectedFiles,
-    suggestedOwner: investigation.suggestedOwner,
-    recommendedAction: buildRecommendedAction(severity),
-    route,
-    reportText,
-    notificationStatus: route.status,
-    createdAt: new Date().toISOString(),
+  return {
+    report: {
+      eventId: event.id,
+      title: event.title,
+      project: event.project,
+      level: event.level,
+      culprit: event.culprit,
+      businessSeverity: severity.businessSeverity,
+      rationale: severity.rationale,
+      findings: investigation.findings,
+      affectedFiles: investigation.affectedFiles,
+      suggestedOwner: investigation.suggestedOwner,
+      recommendedAction: buildRecommendedAction(severity),
+      route,
+      reportText,
+      notificationStatus: route.status,
+      createdAt: new Date().toISOString(),
+    },
+    severity,
+    investigation,
   };
+}
 
-  console.log(
-    [
-      `Event ID: ${report.eventId}`,
-      `Title: ${report.title}`,
-      `Project: ${report.project}`,
-      `Level: ${report.level}`,
-      `Severity: ${report.businessSeverity}`,
-      `Route: ${report.route.channel}:${report.route.destination}`,
-      '',
-      report.reportText,
-    ].join('\n'),
-  );
-
+export async function runTriageAgent(
+  payload: AlertEventPayload,
+  ai: AiLike,
+  dependencies: TriageRuntimeDependencies,
+): Promise<TriageReport> {
+  const { report } = await buildTriageContext(payload, ai, dependencies);
+  logTriageReport(report);
   return report;
 }
 
@@ -175,7 +200,32 @@ export async function processTriggeredEvent(
   ai: AiLike,
   dependencies: TriageRuntimeDependencies,
 ): Promise<TriageReport> {
-  const report = await runTriageAgent(payload, ai, dependencies);
+  const { report, severity, investigation } = await buildTriageContext(payload, ai, dependencies);
+  logTriageReport(report);
+  const event = payload.data.event;
+  const repository = resolveRepository(event.project, dependencies.investigation.repositoryMapping);
+  const remediation = await attemptAutoRemediation(
+    {
+      event,
+      severity,
+      investigation,
+      errorMessage: event.exception?.values?.[0]?.value ?? event.title,
+    },
+    repository && dependencies.remediation?.token
+      ? {
+          github: {
+            owner: repository.owner,
+            repo: repository.repo,
+            token: dependencies.remediation.token,
+            baseBranch: repository.branch ?? dependencies.remediation.baseBranch,
+            apiBaseUrl: dependencies.remediation.apiBaseUrl,
+          },
+          adapter: dependencies.remediation.adapter,
+        }
+      : {
+          adapter: dependencies.remediation?.adapter,
+        },
+  );
   const notification = await deliverNotification(report, dependencies.notification);
   const persisted = toPersistedTriageReport(
     {
@@ -183,6 +233,7 @@ export async function processTriggeredEvent(
       route: notification.route,
       notificationStatus: notification.status,
     },
+    remediation,
     dependencies.rawPayload,
   );
 

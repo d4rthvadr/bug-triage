@@ -1,4 +1,4 @@
-import type { PersistedTriageReport, TriageReport } from './types';
+import type { PersistedTriageReport, RemediationOutcome, TriageReport } from './types';
 
 export interface TriageStore {
   save(report: PersistedTriageReport): Promise<void>;
@@ -10,9 +10,9 @@ export function createD1TriageStore(db: D1Database): TriageStore {
       await db
         .prepare(
           `INSERT OR IGNORE INTO triage_results
-            (id, eventId, title, project, level, businessSeverity, culprit, affectedFiles, suggestedOwner, rationale, createdAt, notificationChannel, notificationStatus, rawPayload)
+            (id, eventId, title, project, level, businessSeverity, culprit, affectedFiles, suggestedOwner, rationale, createdAt, notificationChannel, notificationStatus, rawPayload, remediationEligible, remediationStatus, remediationPattern, pullRequestUrl, pullRequestNumber)
            VALUES
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           report.id,
@@ -29,6 +29,11 @@ export function createD1TriageStore(db: D1Database): TriageStore {
           report.route.channel,
           report.notificationStatus,
           report.rawPayload ?? null,
+          report.remediationEligible ? 1 : 0,
+          report.remediationStatus,
+          report.remediationPattern,
+          report.pullRequestUrl ?? null,
+          report.pullRequestNumber ?? null,
         )
         .run();
     },
@@ -47,10 +52,19 @@ export function createMemoryTriageStore(): TriageStore {
   };
 }
 
-export function toPersistedTriageReport(report: TriageReport, rawPayload?: string): PersistedTriageReport {
+export function toPersistedTriageReport(
+  report: TriageReport,
+  remediation: RemediationOutcome,
+  rawPayload?: string,
+): PersistedTriageReport {
   return {
     id: crypto.randomUUID(),
     ...report,
     rawPayload,
+    remediationEligible: remediation.decision.eligible,
+    remediationStatus: remediation.status,
+    remediationPattern: remediation.pattern,
+    pullRequestUrl: remediation.pullRequestUrl,
+    pullRequestNumber: remediation.pullRequestNumber,
   };
 }

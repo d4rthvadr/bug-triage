@@ -108,6 +108,11 @@ export interface TriageReport {
 export interface PersistedTriageReport extends TriageReport {
   id: string;
   rawPayload?: string;
+  remediationEligible: boolean;
+  remediationStatus: RemediationOutcome['status'];
+  remediationPattern: RemediationPattern;
+  pullRequestUrl?: string;
+  pullRequestNumber?: number;
 }
 
 export interface NotificationResult {
