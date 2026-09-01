@@ -4,3 +4,8 @@ compatibility_date = "2025-01-01"
 
 [ai]
 binding = "AI"
+
+[[d1_databases]]
+binding = "TRIAGE_RESULTS"
+database_name = "triage-results"
+database_id = "aab1e4ab-6daf-422f-8c93-0f8a82d717a4"
