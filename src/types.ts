@@ -114,3 +114,45 @@ export interface NotificationResult {
   route: TriageRoute;
   status: NotificationStatus;
 }
+
+export type RemediationPattern = 'none' | 'missing-null-guard';
+
+export interface RemediationDecision {
+  eligible: boolean;
+  pattern: RemediationPattern;
+  reason: string;
+  property?: string;
+}
+
+export interface RemediationCandidateFile {
+  path: string;
+  content: string;
+}
+
+export interface RemediationCandidateFix {
+  pattern: RemediationPattern;
+  reason: string;
+  branchName: string;
+  pullRequestTitle: string;
+  pullRequestBody: string;
+  files: RemediationCandidateFile[];
+  targetFile: string;
+}
+
+export interface RemediationOutcome {
+  status: 'not-applicable' | 'skipped' | 'generated' | 'pr-created' | 'failed';
+  decision: RemediationDecision;
+  reason: string;
+  pattern: RemediationPattern;
+  targetFile?: string;
+  pullRequestNumber?: number;
+  pullRequestUrl?: string;
+}
+
+export interface GitHubRemediationConfig {
+  owner: string;
+  repo: string;
+  token: string;
+  baseBranch?: string;
+  apiBaseUrl?: string;
+}

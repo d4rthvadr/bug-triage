@@ -8,6 +8,8 @@ import type {
   RankSeverityInput,
   RankSeverityResult,
   RepositoryRef,
+  RemediationDecision,
+  RemediationPattern,
   SentryStackFrame,
 } from './types';
 
@@ -164,4 +166,103 @@ export async function investigateCodebase(
   }
 
   return inspectRepository(repository, input, dependencies.github ?? {});
+}
+
+function extractReadingProperty(errorMessage: string): string | undefined {
+  const readingMatch = errorMessage.match(/reading ['"]([^'"]+)['"]/i);
+  if (readingMatch?.[1]) {
+    return readingMatch[1];
+  }
+
+  const propertyMatch = errorMessage.match(/property ['"]([^'"]+)['"]/i);
+  if (propertyMatch?.[1]) {
+    return propertyMatch[1];
+  }
+
+  return undefined;
+}
+
+export function detectRemediationDecision(input: {
+  severity: 'P0' | 'P1' | 'P2' | 'P3';
+  culprit: string;
+  title: string;
+  errorMessage: string;
+  findings: string[];
+  affectedFiles: string[];
+}): RemediationDecision {
+  if (input.severity === 'P0' || input.severity === 'P1') {
+    return {
+      eligible: false,
+      pattern: 'none',
+      reason: 'High-severity alerts escalate only and do not auto-remediate.',
+    };
+  }
+
+  if (input.affectedFiles.length === 0) {
+    return {
+      eligible: false,
+      pattern: 'none',
+      reason: 'Insufficient code context: investigation returned no affected files, so the alert is not eligible for auto-remediation.',
+    };
+  }
+
+  const normalizedError = input.errorMessage.toLowerCase();
+  const property = extractReadingProperty(input.errorMessage);
+  const undefinedAccess = /cannot read properties of undefined|cannot read property|undefined is not an object/i.test(normalizedError);
+
+  if (property && undefinedAccess) {
+    return {
+      eligible: true,
+      pattern: 'missing-null-guard',
+      reason: `The alert indicates an undefined property access on ${property}, which is eligible for a conservative null-guard remediation.`,
+      property,
+    };
+  }
+
+  return {
+    eligible: false,
+    pattern: 'none',
+    reason: 'No recognised remediation template matched the alert.',
+  };
+}
+
+export function slugifyRemediationToken(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
+export function buildRemediationBranchName(eventId: string, pattern: RemediationPattern): string {
+  return `auto-remediate/${slugifyRemediationToken(eventId) || 'event'}/${pattern}`;
+}
+
+export function findReportedLine(stackFrames: SentryStackFrame[], targetFile: string): number | undefined {
+  const matches = stackFrames.filter(
+    (frame): frame is SentryStackFrame & { lineno: number } => frame.filename === targetFile && typeof frame.lineno === 'number',
+  );
+
+  return matches.length > 0 ? matches[matches.length - 1].lineno : undefined;
+}
+
+export function applyNullGuardPatch(content: string, property: string, targetLine: number): string | null {
+  const lines = content.split('\n');
+  const lineIndex = targetLine - 1;
+
+  if (lineIndex < 0 || lineIndex >= lines.length) {
+    return null;
+  }
+
+  const escapedProperty = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`(^|[^?])\\.${escapedProperty}\\b`);
+  const line = lines[lineIndex];
+  const patchedLine = line.replace(pattern, `$1?.${property}`);
+
+  if (patchedLine === line) {
+    return null;
+  }
+
+  lines[lineIndex] = patchedLine;
+  return lines.join('\n');
 }
