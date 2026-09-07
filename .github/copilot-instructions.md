@@ -61,15 +61,22 @@ This architecture is documented in docs/PRD.md and docs/handoffs/triage-agent.md
 - For every new task, create a dedicated branch and, when parallel development is expected, a separate worktree before editing files. Do not let multiple agents or processes work on the same file in the same repo state.
 - If a file already has uncommitted or branch-local changes in another worktree, stop and coordinate rather than editing the same path concurrently.
 - Break work into logical units of progress and commit each completed unit separately instead of waiting for one large final commit. Prefer small, reviewable commits that map to one decision, one feature slice, or one verified change set.
+- Before requesting merge approval, fast-forward local `main` from `origin/main` without rebasing or merging anything into `main`. Then, from the active task branch, run `git rebase main` so the task branch receives the latest `main` changes. Inspect for drift or conflicts, resolve all conflicts on the task branch, rerun the verification gate, and confirm the branch is clean before asking for approval.
+- Before merging any task branch into `main`, run the relevant verification gate, inspect the commits and diff to be merged, and ask for explicit human approval. Never run `git merge` into `main` without that approval, even when the branch is clean and fully verified.
+- After a merge into `main` succeeds, verify the branch tip is contained in `main`, remove its linked worktree with `git worktree remove`, and delete the local branch with `git branch -d`. Do not force-delete branches or worktrees that are not confirmed merged.
 - After any code edit, run the repo verification gate before finishing: `npm run check` and `npm test`.
 - Do not mark work complete until the verification gate passes.
 
 ## Branch + worktree workflow
 
 ```bash
-git switch -c feature/<task-name>
+git switch main
+git fetch origin main
+git pull --ff-only origin main
 # For parallel work or multi-agent safety:
-git worktree add ../bug-triage-<task-name> -b feature/<task-name>
+git worktree add ../bug-triage-<task-name> -b feature/<task-name> main
+# Otherwise:
+git switch -c feature/<task-name> main
 ```
 
 This is the default workflow for any follow-up task in this repository. It prevents two processes from modifying the same file at once and keeps each change set isolated.

@@ -56,9 +56,13 @@ For any new task, do not edit files in the main working tree when another sessio
 Required workflow:
 
 ```bash
-git switch -c feature/<task-name>
+git switch main
+git fetch origin main
+git pull --ff-only origin main
 # if parallel work is expected or another process may be active:
-git worktree add ../bug-triage-<task-name> -b feature/<task-name>
+git worktree add ../bug-triage-<task-name> -b feature/<task-name> main
+# otherwise:
+git switch -c feature/<task-name> main
 ```
 
 Rules:
@@ -68,6 +72,9 @@ Rules:
 - Keep each task isolated to its own branch/worktree to prevent collisions on the same file.
 - Break work into small, coherent checkpoints and commit each one as a complete unit of progress rather than waiting for a single large final commit.
 - When you finish a task, commit the branch and leave the repo in a clean, reviewable state.
+- Before requesting merge approval, fast-forward local `main` from `origin/main` without rebasing or merging anything into `main`. Then, from the active task branch, run `git rebase main` so the task branch receives the latest `main` changes. Inspect for drift or conflicts, resolve all conflicts on the task branch, rerun the verification gate, and confirm the branch is clean before asking for approval.
+- Before merging any task branch into `main`, run the relevant verification gate, inspect the commits and diff to be merged, and ask for explicit human approval. Never run `git merge` into `main` without that approval, even when the branch is clean and fully verified.
+- After a merge into `main` succeeds, verify the branch tip is contained in `main`, remove its linked worktree with `git worktree remove`, and delete the local branch with `git branch -d`. Do not force-delete branches or worktrees that are not confirmed merged.
 
 ## Copilot agent lifecycle hooks
 
