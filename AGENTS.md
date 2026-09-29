@@ -84,6 +84,7 @@ These are the required lifecycle rules for any Copilot or autonomous agent worki
 - After any file edit, run the verification gate before continuing: `npm run check`.
 - After a behavioral change or before finishing an implementation task, run the repo validation gate: `npm run check && npm test`.
 - Before handing off work or finalizing a task, confirm the gate passes and call out the result in the final summary.
+- After completing and validating a task, update the corresponding checklist in `docs/PRD.md` so it reflects the shipped scope and current roadmap status.
 
 This repo does not define a dedicated lint script, so the current verification gate is TypeScript + Vitest:
 

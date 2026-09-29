@@ -37,39 +37,39 @@ The core problem it solves: on-call engineers spend significant time on triage w
 
 ## Functional Requirements
 
-### v1 — Tracer Bullet (current)
+### v1 — Tracer Bullet (completed)
 
-- [ ] Receive Sentry webhook at `POST /webhook/sentry`
-- [ ] Verify HMAC-SHA256 webhook signature
-- [ ] Parse alert payload and extract: event ID, title, level, culprit, project, stack frames
-- [ ] Rank business severity deterministically (P0–P3) based on Sentry level and project
-- [ ] Invoke codebase investigation tool (mocked) and return affected files + suggested owner
-- [ ] LLM synthesises a structured triage report
-- [ ] Output triage report to console
+- [x] Receive Sentry webhook at `POST /webhook/sentry`
+- [x] Verify HMAC-SHA256 webhook signature
+- [x] Parse alert payload and extract: event ID, title, level, culprit, project, stack frames
+- [x] Rank business severity deterministically (P0–P3) based on Sentry level and project
+- [x] Invoke codebase investigation tool (mocked) and return affected files + suggested owner
+- [x] LLM synthesises a structured triage report
+- [x] Output triage report to console
 
-### v2 — Real Investigation
+### v2 — Real Investigation (completed)
 
-- [ ] Replace mocked codebase tool with GitHub integration: search code, get blame, fetch recent commits on culprit file
-- [ ] Route triage report to Slack channel or PagerDuty based on severity
-- [ ] Persist triage results to Cloudflare D1 for audit trail
+- [x] Replace mocked codebase tool with GitHub integration: search code, get blame, fetch recent commits on culprit file
+- [x] Route triage report to Slack channel or PagerDuty based on severity
+- [x] Persist triage results to Cloudflare D1 for audit trail
 
-### v3 — Auto-Remediation
+### v3 — Auto-Remediation (completed)
 
-- [ ] For P2/P3 errors with a recognised pattern, generate a candidate fix
-- [ ] Open a GitHub PR with the fix and triage report as description
-- [ ] For P0/P1, skip auto-fix and escalate directly with full context
+- [x] For P2/P3 errors with a recognised pattern, generate a candidate fix
+- [x] Open a GitHub PR with the fix and triage report as description
+- [x] For P0/P1, skip auto-fix and escalate directly with full context
 
-### v5 — Multi-Source Ingestion
+### v5 — Multi-Source Ingestion (planned)
 
 - [ ] Abstract webhook handler behind a normalised `AlertEvent` interface
 - [ ] Add ingestion adapters for additional sources (e.g. Datadog, PagerDuty, custom)
 - [ ] Route all sources through the same agent loop without changes to triage logic
 
-### v4 — Learning & Tuning
+### v4 — Learning & Tuning (completed)
 
-- [ ] Incorporate event rate and affected-user-count signals into severity ranking
-- [ ] Handle `resolved` webhook actions to auto-close routed tickets
-- [ ] Multi-alert deduplication to suppress noise during an incident
+- [x] Incorporate event rate and affected-user-count signals into severity ranking
+- [x] Handle `resolved` webhook actions to auto-close routed tickets
+- [x] Multi-alert deduplication to suppress noise during an incident
 
 ---
 
