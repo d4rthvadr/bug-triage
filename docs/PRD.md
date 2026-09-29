@@ -86,6 +86,8 @@ The core problem it solves: on-call engineers spend significant time on triage w
 
 ## System Architecture
 
+Detailed Mermaid activity, sequence, component/deployment, entity, and lifecycle diagrams are maintained in [docs/architecture.md](architecture.md).
+
 ```
 Sentry
   │  POST /webhook/sentry
