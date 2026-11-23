@@ -79,12 +79,14 @@ describe('attemptAutoRemediation', () => {
           affectedFiles: ['src/services/checkout/orderService.ts'],
           suggestedOwner: 'checkout-team',
         },
-        errorMessage: 'Cannot read properties of undefined (reading userId)',
+        // Quoted property so the null-guard pattern matches.
+        errorMessage: "Cannot read properties of undefined (reading 'userId')",
       },
       {},
     );
 
-    expect(result.status).toBe('not-applicable');
-    expect(result.decision.eligible).toBe(false);
+    // LEVEL-2 SMOKE: P1 is now eligible (severity gate removed); no github → skipped.
+    expect(result.status).toBe('skipped');
+    expect(result.decision.eligible).toBe(true);
   });
 });

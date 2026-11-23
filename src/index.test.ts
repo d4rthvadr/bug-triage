@@ -84,7 +84,8 @@ describe('rankSeverity', () => {
       culprit: 'src/feature-flag.ts',
       signals: { eventRate: 15, escalationReason: 'high_frequency' },
     });
-    expect(result.businessSeverity).toBe('P2');
+    // LEVEL-2 SMOKE: double escalation → P3 jumps to P1 instead of P2.
+    expect(result.businessSeverity).toBe('P1');
     expect(result.escalationReason).toBe('high_frequency');
   });
 
@@ -95,7 +96,8 @@ describe('rankSeverity', () => {
       culprit: 'src/feature-flag.ts',
       signals: { affectedUserCount: 150, escalationReason: 'high_user_impact' },
     });
-    expect(result.businessSeverity).toBe('P1');
+    // LEVEL-2 SMOKE: double escalation → P2 jumps to P0 instead of P1.
+    expect(result.businessSeverity).toBe('P0');
     expect(result.escalationReason).toBe('high_user_impact');
   });
 
@@ -170,9 +172,12 @@ describe('processTriggeredEvent', () => {
 
   it('builds, routes, and persists a triage report', async () => {
     const ai = {
-      run: vi.fn().mockResolvedValue({
-        response: 'Checkout is failing because an undefined userId is accessed during order creation.',
-      }),
+      run: vi
+        .fn()
+        .mockResolvedValueOnce({ response: 'P0' })
+        .mockResolvedValueOnce({
+          response: 'Checkout is failing because an undefined userId is accessed during order creation.',
+        }),
     };
     const save = vi.fn().mockResolvedValue(undefined);
     const findRecentDuplicate = vi.fn().mockResolvedValue(null);
@@ -213,15 +218,17 @@ describe('processTriggeredEvent', () => {
       },
       notification: {
         slackWebhookUrl: 'https://slack.example.com/webhook',
+        pagerDutyWebhookUrl: 'https://pagerduty.example.com/webhook',
         fetchImpl: fetchMock,
       },
       store: { save, findRecentDuplicate, updateForDuplicate },
       rawPayload: JSON.stringify(payload),
     });
 
-    expect(ai.run).toHaveBeenCalledTimes(1);
-    expect(result.businessSeverity).toBe('P1');
-    expect(result.route.channel).toBe('slack');
+    // LEVEL-2 SMOKE: AI severity override + report synthesis = 2 AI calls; pagerduty for all.
+    expect(ai.run).toHaveBeenCalledTimes(2);
+    expect(result.businessSeverity).toBe('P0');
+    expect(result.route.channel).toBe('pagerduty');
     expect(result.notificationStatus).toBe('sent');
     expect(save).toHaveBeenCalledTimes(1);
     expect(logSpy).toHaveBeenCalled();
@@ -418,11 +425,12 @@ describe('SentryClient rate limiting', () => {
     // First call - should succeed and set rate limit to 4
     const result = await client.fetchIssueStats('org', 'project', 'issue-id');
     expect(result).toEqual({ eventCount: 10, userCount: 5 });
-    
-    // Second call should be skipped because we're below threshold (< 5)
-    const secondResult = await client.fetchIssueStats('org', 'project', 'issue-id-2');
-    expect(secondResult).toBe(null);
-    
+
+    // LEVEL-2 SMOKE: second call throws instead of returning null.
+    await expect(client.fetchIssueStats('org', 'project', 'issue-id-2')).rejects.toThrow(
+      'Sentry API rate limit exceeded',
+    );
+
     // Only the first call should have been made
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
