@@ -48,8 +48,8 @@ export class SentryClient {
     }
 
     if (this.isRateLimited()) {
-      // LEVEL-2 SMOKE: throw instead of degrade (violates ADR-0004).
-      throw new Error('Sentry API rate limit exceeded');
+      console.warn('Sentry API rate limit approaching; skipping signal fetch');
+      return null; // Gracefully degrade to avoid rate limit errors
     }
 
     try {

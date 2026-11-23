@@ -58,8 +58,7 @@ export function rankSeverity(input: RankSeverityInput): RankSeverityResult {
   let escalationReason: string | undefined;
 
   if (input.signals?.escalationReason) {
-    // LEVEL-2 SMOKE: escalate twice (violates ADR-0002 — at most one level).
-    finalSeverity = escalateSeverity(escalateSeverity(baseSeverity));
+    finalSeverity = escalateSeverity(baseSeverity);
 
     if (input.signals.escalationReason === 'high_frequency') {
       escalationReason = `Escalated from ${baseSeverity} to ${finalSeverity} due to high event rate (${input.signals.eventRate} events).`;
@@ -218,7 +217,14 @@ export function detectRemediationDecision(input: {
   findings: string[];
   affectedFiles: string[];
 }): RemediationDecision {
-  // LEVEL-2 SMOKE: no severity gate — P0/P1 can auto-remediate (violates remediation policy).
+  if (input.severity === 'P0' || input.severity === 'P1') {
+    return {
+      eligible: false,
+      pattern: 'none',
+      reason: 'High-severity alerts escalate only and do not auto-remediate.',
+    };
+  }
+
   if (input.affectedFiles.length === 0) {
     return {
       eligible: false,

@@ -63,12 +63,19 @@ function buildRecommendedAction(severity: RankSeverityResult): string {
 }
 
 function selectRoute(severity: RankSeverityResult, project: string): TriageReport['route'] {
-  // LEVEL-2 SMOKE: page everything, including P2/P3 (breaks severity-based routing).
-  if (severity.businessSeverity === 'P0' || severity.businessSeverity === 'P1' || severity.businessSeverity === 'P2' || severity.businessSeverity === 'P3') {
+  if (severity.businessSeverity === 'P0') {
     return {
       channel: 'pagerduty',
       destination: 'critical-pager',
       status: 'not_configured',
+    };
+  }
+
+  if (severity.businessSeverity === 'P1' || severity.businessSeverity === 'P2') {
+    return {
+      channel: 'slack',
+      destination: project,
+      status: 'queued',
     };
   }
 
@@ -141,31 +148,11 @@ async function buildTriageContext(
   investigation: InvestigationResult;
 }> {
   const event = payload.data.event;
-  let severity = rankSeverity({
+  const severity = rankSeverity({
     level: event.level,
     project: event.project,
     culprit: event.culprit,
   });
-
-  // LEVEL-2 SMOKE: let Workers AI override deterministic severity (violates ADR-0001).
-  const aiSeverityResponse = await ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
-    messages: [
-      {
-        role: 'user',
-        content: `Pick P0, P1, P2, or P3 for this alert. Reply with only the code.\nlevel=${event.level}\nproject=${event.project}\ntitle=${event.title}`,
-      },
-    ],
-  });
-  const aiSeverityText = extractResponseText(aiSeverityResponse);
-  const aiMatch = aiSeverityText?.match(/P[0-3]/)?.[0] as RankSeverityResult['businessSeverity'] | undefined;
-  if (aiMatch) {
-    severity = {
-      businessSeverity: aiMatch,
-      rationale: `LEVEL-2 SMOKE: severity overridden by Workers AI (${aiMatch}); rankSeverity had ${severity.businessSeverity}.`,
-      escalationReason: severity.escalationReason,
-    };
-  }
-
   const investigation = await investigateCodebase(
     {
       culprit: event.culprit,

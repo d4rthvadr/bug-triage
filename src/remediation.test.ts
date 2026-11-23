@@ -61,6 +61,13 @@ describe('attemptAutoRemediation', () => {
   });
 
   it('skips remediation for P1 alerts', async () => {
+    const adapter = {
+      getFile: vi.fn(),
+      createBranch: vi.fn(),
+      updateFile: vi.fn(),
+      createPullRequest: vi.fn(),
+    };
+
     const result = await attemptAutoRemediation(
       {
         event: {
@@ -79,14 +86,16 @@ describe('attemptAutoRemediation', () => {
           affectedFiles: ['src/services/checkout/orderService.ts'],
           suggestedOwner: 'checkout-team',
         },
-        // Quoted property so the null-guard pattern matches.
         errorMessage: "Cannot read properties of undefined (reading 'userId')",
       },
-      {},
+      { adapter },
     );
 
-    // LEVEL-2 SMOKE: P1 is now eligible (severity gate removed); no github → skipped.
-    expect(result.status).toBe('skipped');
-    expect(result.decision.eligible).toBe(true);
+    expect(result.status).toBe('not-applicable');
+    expect(result.decision.eligible).toBe(false);
+    expect(adapter.getFile).not.toHaveBeenCalled();
+    expect(adapter.createBranch).not.toHaveBeenCalled();
+    expect(adapter.updateFile).not.toHaveBeenCalled();
+    expect(adapter.createPullRequest).not.toHaveBeenCalled();
   });
 });
