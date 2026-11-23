@@ -1,0 +1,27 @@
+---
+description: Run the TypeScript and Vitest verification gate after code edits
+alwaysApply: true
+---
+
+# Verification gate
+
+This repo has no ESLint script. The gate is TypeScript + Vitest.
+
+After any code edit, before continuing or claiming done:
+
+```bash
+npm run check
+```
+
+After a behavioral change (logic, webhook, tools, agent, remediation, store, sentry):
+
+```bash
+npm run check && npm test
+```
+
+Rules:
+
+- Do not mark work complete until the gate passes.
+- Prefer unit tests with injected mocks (`fetchImpl`, store, AI). No live Workers AI or network in tests.
+- Assert business-rule outcomes (severity, escalation, waitUntil scheduling, remediation eligibility), not console formatting.
+- If the gate fails, fix the failure before starting unrelated work.
