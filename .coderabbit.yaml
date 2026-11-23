@@ -1,0 +1,96 @@
+# yaml-language-server: $schema=https://www.coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_instructions: |
+    Summarize impact on: webhook auth/latency, severity auditability,
+    tool seams, remediation gates, and external I/O degradation.
+    Prefer docs/adr and current src/ over stale v1 wording in AGENTS.md.
+  poem: false
+  path_filters:
+    - "!**/package-lock.json"
+    - "!**/docs/handoffs/**/*.json"
+  path_instructions:
+    - path: src/index.ts
+      instructions: |
+        Keep POST /webhook/sentry as the sole product entrypoint. Verify HMAC-SHA256 on
+        the raw body via sentry-hook-signature; skip verification only when secret is
+        unset (local). Always return quickly: schedule work with ctx.waitUntil.
+        action === "triggered" runs triage; action === "resolved" runs closure;
+        other actions return 200 Ignored. Do not block the response on AI, GitHub,
+        Slack, or D1. Reject invalid signatures with 401 and bad JSON with 400.
+    - path: src/tools.ts
+      instructions: |
+        rankSeverity must remain a pure, deterministic function. Do not suggest LLM-based
+        priority. Keep CRITICAL_PROJECTS and escalation mapping explicit and testable.
+        Escalate at most one level when signals are present; preserve rationale/escalationReason
+        for audit. investigateCodebase is a seam: prefer dependency injection
+        (InvestigationDependencies) over hard-wiring Octokit. Remediation helpers
+        (detectRemediationDecision, applyNullGuardPatch) should stay conservative —
+        high severity (P0/P1) must not auto-remediate; return null when a patch cannot
+        be localized confidently. Prefer small pure helpers over new abstractions.
+    - path: src/sentry.ts
+      instructions: |
+        Enforce ADR-0002/0004: thresholds are named constants (EVENT_RATE_THRESHOLD,
+        USER_COUNT_THRESHOLD). fetchIssueStats must degrade gracefully — return null on
+        missing token, rate limit, HTTP error, or exception; never throw into the webhook
+        path. Track X-RateLimit-Remaining; skip when remaining < 5; warn when < 10.
+        determineEscalation applies at most one escalation reason (high_frequency OR
+        high_user_impact). Do not recommend the official Sentry error-reporting SDK for
+        issue-stats queries. Prefer injectable fetchImpl for tests.
+    - path: src/agent.ts
+      instructions: |
+        Preserve the contract: call rankSeverity and investigateCodebase as tool
+        boundaries; Workers AI only synthesizes report text from deterministic inputs —
+        never invents severity. Routing/notifications/store/remediation are adapters via
+        TriageRuntimeDependencies. Dedup (culprit+project, store window) must suppress
+        notifications and audit, not invent fuzzy matching. processResolvedEvent is
+        closure-only. Avoid coupling the agent loop to GitHub/Slack/D1 client details.
+        Prefer early returns and explicit route/notificationStatus values.
+    - path: src/remediation.ts
+      instructions: |
+        Auto-remediation must stay template-bound and conservative. Prefer adapter
+        injection for tests. Surface failures without breaking webhook acknowledgment.
+        P0/P1 must not open auto-fix PRs.
+    - path: src/notifications.ts
+      instructions: |
+        Notification adapters only. Failures should log and surface failed/skipped
+        status — do not fail the overall triage pipeline hard. Keep channel selection
+        driven by severity/route, not LLM.
+    - path: src/store.ts
+      instructions: |
+        D1 is an audit/dedup store, not the severity source of truth. Keep
+        DEDUP_WINDOW_MINUTES as an explicit constant. Dedup matching stays
+        culprit+project within the window.
+    - path: "**/*.test.ts"
+      instructions: |
+        Prefer unit tests of pure rules (rankSeverity, escalation, remediation, rate
+        limit) and injected seams (fetchImpl, store, AI mocks). Do not require live
+        Workers AI or network. Assert audit fields (escalationReason, notification
+        suppression, waitUntil scheduling). Avoid brittle snapshot noise on console
+        formatting unless behavior-critical.
+    - path: docs/adr/**
+      instructions: |
+        ADRs are the durable decision record. Flag contradictions with Accepted ADRs
+        (especially deterministic severity and graceful Sentry degradation). Do not
+        nitpick prose. Proposed ADRs should not be treated as fully binding until Accepted.
+    - path: docs/handoffs/**
+      instructions: |
+        Session handoffs and sample payloads. Ignore stylistic/grammar nits. Only
+        comment if sample payloads would break AlertEventPayload or documented curl flows.
+    - path: docs/setups/**
+      instructions: |
+        Operational setup only. Light touch: secrets, wrangler, mapping env vars.
+        Do not demand refactors of application code from setup-doc PRs.
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - files: "docs/adr/**/*.md,docs/architecture.md"
+        applyTo: "src/**/*.ts"
