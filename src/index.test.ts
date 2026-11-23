@@ -394,6 +394,8 @@ describe('webhook handler', () => {
 
     expect(res.status).toBe(200);
     expect(waitUntil).toHaveBeenCalledTimes(1);
+    await waitUntil.mock.calls[0][0];
+    expect(ai.run).toHaveBeenCalled();
   });
 });
 
@@ -416,11 +418,11 @@ describe('SentryClient rate limiting', () => {
     // First call - should succeed and set rate limit to 4
     const result = await client.fetchIssueStats('org', 'project', 'issue-id');
     expect(result).toEqual({ eventCount: 10, userCount: 5 });
-    
+
     // Second call should be skipped because we're below threshold (< 5)
     const secondResult = await client.fetchIssueStats('org', 'project', 'issue-id-2');
     expect(secondResult).toBe(null);
-    
+
     // Only the first call should have been made
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
