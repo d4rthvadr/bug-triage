@@ -1,0 +1,28 @@
+---
+description: Keep severity deterministic and preserve triage tool seams
+globs: src/tools.ts,src/agent.ts,src/sentry.ts,src/index.ts,src/remediation.ts
+alwaysApply: false
+---
+
+# Severity and seams
+
+Hard stops when editing core triage modules:
+
+- `rankSeverity` stays pure and rule-based. Never let Workers AI choose or override P0–P3.
+- Signal escalation is at most **one** level; keep thresholds as named constants.
+- `investigateCodebase` remains a DI seam (`InvestigationDependencies`); do not hard-wire Octokit into the agent loop.
+- Webhook handler: verify HMAC on the raw body; ack fast with `ctx.waitUntil` — never await triage/AI/GitHub/Slack/D1 on the request path.
+- Sentry signal fetch: degrade to `null` / base severity on missing token, rate limit, or HTTP failure — never throw into the webhook path.
+- Auto-remediation: P0/P1 must not auto-fix; return `null` when a patch cannot be localized confidently.
+- Slack, PagerDuty, D1, and GitHub remediations are adapters via explicit dependencies — not core decision logic.
+
+```typescript
+// ❌ BAD — LLM picks priority
+severity = await ai.run(...); // "reply with P0-P3"
+
+// ✅ GOOD — deterministic tool, AI only writes report text
+const severity = rankSeverity({ level, project, culprit, signals });
+const reportText = await synthesizeReport(payload, ai, severity, investigation);
+```
+
+Prefer Accepted ADRs (`docs/adr/`) over inventing new priority or routing heuristics.

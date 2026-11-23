@@ -1,0 +1,22 @@
+---
+description: Prefer ADRs and current source over stale v1 agent docs
+alwaysApply: true
+---
+
+# Docs truth source
+
+When product or architecture guidance conflicts, prefer in this order:
+
+1. Accepted ADRs under `docs/adr/`
+2. Current implementation in `src/` and `docs/architecture.md`
+3. Active milestone docs under `docs/specs/` / `docs/handoffs/` for the phase you are implementing
+4. `docs/PRD.md` roadmap checklists
+5. `AGENTS.md` and `.github/copilot-instructions.md` — useful for workflow, but may still describe early v1 (mocked investigation, “no GitHub/Slack/D1”)
+
+Do not reject or rip out shipped v2–v4 behavior (GitHub investigation, notifications, D1, remediation, resolved/dedup, Sentry signals) because stale agent docs say “v1 only.”
+
+For doc-only edits:
+
+- `docs/handoffs/**` and `docs/setups/**`: light touch; do not demand application refactors.
+- New durable decisions: record an ADR rather than only updating a handoff.
+- When adding third-party setup, update `docs/setups/`.
