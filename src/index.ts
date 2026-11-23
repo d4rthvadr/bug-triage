@@ -100,8 +100,7 @@ export default {
       rawPayload: rawBody,
     };
 
-    // SMOKE TEST: await triage before acknowledging Sentry (violates fast-ack + waitUntil NFR).
-    await processTriggeredEvent(payload, env.AI, dependencies);
+    ctx.waitUntil(processTriggeredEvent(payload, env.AI, dependencies));
     return new Response('OK', { status: 200 });
   },
 };

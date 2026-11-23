@@ -209,26 +209,6 @@ function extractReadingProperty(errorMessage: string): string | undefined {
   return undefined;
 }
 
-/**
- * SMOKE TEST ONLY — temporary helper for CodeRabbit review validation.
- * Intentionally asks Workers AI to choose P0–P3, which violates ADR-0001
- * (severity must stay deterministic). Do not wire this into the agent loop.
- */
-export async function rankSeverityWithAi(
-  input: RankSeverityInput,
-  ai: { run: (model: string, options: { messages: Array<{ role: string; content: string }> }) => Promise<{ response?: string }> },
-): Promise<RankSeverityResult> {
-  const prompt = `Choose a business severity (P0, P1, P2, or P3) for this Sentry alert and reply with only the priority code.\nlevel=${input.level}\nproject=${input.project}\nculprit=${input.culprit}`;
-  const result = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
-    messages: [{ role: 'user', content: prompt }],
-  });
-  const match = result.response?.match(/P[0-3]/)?.[0] ?? 'P2';
-  return {
-    businessSeverity: match as BusinessSeverity,
-    rationale: 'SMOKE TEST: severity selected by LLM instead of rankSeverity rules.',
-  };
-}
-
 export function detectRemediationDecision(input: {
   severity: 'P0' | 'P1' | 'P2' | 'P3';
   culprit: string;
@@ -237,8 +217,7 @@ export function detectRemediationDecision(input: {
   findings: string[];
   affectedFiles: string[];
 }): RemediationDecision {
-  // SMOKE TEST: allow P1 auto-remediation (violates P0/P1 no-auto-fix gate).
-  if (input.severity === 'P0') {
+  if (input.severity === 'P0' || input.severity === 'P1') {
     return {
       eligible: false,
       pattern: 'none',
