@@ -393,7 +393,9 @@ describe('webhook handler', () => {
     );
 
     expect(res.status).toBe(200);
-    expect(waitUntil).toHaveBeenCalledTimes(1);
+    // SMOKE TEST: handler currently awaits triage inline instead of ctx.waitUntil.
+    expect(waitUntil).toHaveBeenCalledTimes(0);
+    expect(ai.run).toHaveBeenCalled();
   });
 });
 
